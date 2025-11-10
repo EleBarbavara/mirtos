@@ -25,4 +25,4 @@ class Telescope():
             raise ValueError('Observation with this telescope are not currently possible.')
 
 
-
+#### aggiungere GBT
