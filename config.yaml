@@ -1,0 +1,50 @@
+name_target: 'JUPITER'
+date_obs: "20241214" #vedere nome cartella file
+
+telescope: 'SRT'
+pixel_size: 60 #arcsec
+num_ch_map: 'all' #numero di canali con cui fare la mappa. Se si vogliono tutti i pixel, scrivere 'all'
+
+paths: #NB: NON METTERE SLASH FINALE SUL PATH!!!!!!!
+  # Location of TOD files
+  tods: "/Users/eleonora/Desktop/      mistral/OBS/SRT-dicembre/20241214-204624-MISTRAL-JUPITER_TY-2.5_TZ-7"
+  #File of the channels' responsivity
+  resp: False #'/home/eleobar/MISTRAL_gen+map-maker/optical_responsivity_new_lowSNR_200mK.pkl'
+  #File of the channels' offsets
+  offset_pixel: '/Users/eleonora/Desktop/      mistral/mirtos_multiprocess/chp_offset_rel8_14DEC24_matteo.dat' #/Users/eleonora/Desktop/mistral/mirtos_multiprocess/feed_offsets_relchp8_02may25.dat 
+  #'/Users/eleonora/Desktop/mistral/FOCUS/pixel_offsets_AZ_01SEP24_matteo.dat'
+  skydip: False #'/Users/eleonora/Desktop/SRT-marzo/20250404-164449-MISTRAL-GAIN_CAL/20250404-164449-MISTRAL-GAIN_CAL_005_001.fits'
+  tau: 0.16
+  T_atm: 267
+
+flag_track: True
+
+binner:
+  projection: 'SIN' #'SIN' oppure 'GNOM'
+  frame: 'AZEL' # 'AZEL' oppure 'RADEC' oppure 'EQ'
+
+filtering:
+  #info of box around source to mask during baseline removal and filtering
+  radius: False #arcsec
+  baseline_rem: 'cutted'
+  #If True, the detrended TODs are filtered, or else the raw TODs
+  use_detrend_tods: True
+  #If True, the filtering is done only computing the generale commone mode
+  gen_cm: False
+  plot_cm: False
+  #If True, the filtering is done computing the custom commone mode for each pixel
+  cust_cm: False
+  plot_corr_matrix: False
+  plt_cust_cm: False
+
+unfilt_map: 'dt' #'raw'=TODs raw are used or 'dt'=TODs detrended are used
+
+plot_maps:
+  plot_filt: True
+  plot_unfilt: True
+  plot_counts: False
+  plot_std: False
+
+#Save resulting maps in file fits
+save_map: False
+save_single_pixel_maps: False
