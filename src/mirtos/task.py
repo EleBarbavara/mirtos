@@ -142,6 +142,8 @@ def create_scan(filename):
             np.save('../../metadata/gain.npy', np.array(resps_copy))
             
             for i in range(subscan.num_feed):
+                #TO DO associare i giusti file/dati per la calibrazione
+                #TO DO calibrazione con piu calibratori? 
                 z = np.pi/2 - np.array(subscan.el_scan + subscan.offset_y_single[i])
                 ts_raw.append(subscan.timestream_raw[i]/(resps_copy[i]*np.exp(-cfg['paths']['tau']/np.cos(z))))
         
