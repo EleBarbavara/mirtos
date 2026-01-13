@@ -11,7 +11,7 @@ paths: #NB: NON METTERE SLASH FINALE SUL PATH!!!!!!!
   #File of the channels' responsivity
   resp: False #'/home/eleobar/MISTRAL_gen+map-maker/optical_responsivity_new_lowSNR_200mK.pkl'
   #File of the channels' offsets
-  offset_pixel: '/Users/eleonora/Desktop/      mirtos/mirtos_multiprocess/chp_offset_rel8_14DEC24_matteo.dat' #/Users/eleonora/Desktop/mirtos/mirtos_multiprocess/feed_offsets_relchp8_02may25.dat
+  offset_det: '/Users/eleonora/Desktop/      mirtos/mirtos_multiprocess/chp_offset_rel8_14DEC24_matteo.dat' #/Users/eleonora/Desktop/mirtos/mirtos_multiprocess/feed_offsets_relchp8_02may25.dat
   #'/Users/eleonora/Desktop/mirtos/FOCUS/pixel_offsets_AZ_01SEP24_matteo.dat'
   skydip: False #'/Users/eleonora/Desktop/SRT-marzo/20250404-164449-MISTRAL-GAIN_CAL/20250404-164449-MISTRAL-GAIN_CAL_005_001.fits'
   tau: 0.16
