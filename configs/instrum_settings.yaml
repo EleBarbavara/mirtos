@@ -1,0 +1,22 @@
+SRT:
+  diameter : 60 #m
+  bandwidth : 30e9 #Hz
+  central_wavelength : 0.0033 #m (central wavelenght)
+  central_freq : 90e9 #GHz (central frequency)
+  efficiency : 0.3
+  fov : 4 #arcmin
+
+LAB:
+  diameter : 0 #m
+  bandwidth : 30e9 #Hz
+  central_wavelength : 0.0033 #m (central wavelenght)
+  central_freq : 90e9 #GHz (central frequency)
+  end_band : central_freq+bandwidth
+  efficiency : 0.3
+  beam : 0
+  A_beam : 0
+  A_tele: 0
+  fov : 4 #arcmin
+
+GBT:
+  note: 'Not implemented yet'
