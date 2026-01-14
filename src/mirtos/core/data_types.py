@@ -9,6 +9,7 @@ import numpy as np
 from scipy.constants import c
 import yaml
 
+import logging
 
 @dataclass
 class Telescope():
@@ -87,15 +88,15 @@ class Subscan():
         self.telescope = Telescope()
         self.telescope.initialize(config= cfg, name=system)
         
-        print("-------------------------------------")
-        print("         Telescope: "+self.telescope.name+"  ")
-        print("-------------------------------------")
-        print("Diameter = "+str(self.telescope.diameter)+" m")
-        print("Band = "+str(self.telescope.central_freq/1e9)+"-"+str(self.telescope.end_band/1e9)+" GHz")
-        print("Efficiency = "+str(self.telescope.efficiency)+" ")
-        print("Gaussian beam = ????????????? ")
-        print("Beam area = ???????????? ")
-        print("-------------------------------------")
+        logging.info("-------------------------------------")
+        logging.info("         Telescope: "+self.telescope.name+"  ")
+        logging.info("-------------------------------------")
+        logging.info("Diameter = "+str(self.telescope.diameter)+" m")
+        logging.info("Band = "+str(self.telescope.central_freq/1e9)+"-"+str(self.telescope.end_band/1e9)+" GHz")
+        logging.info("Efficiency = "+str(self.telescope.efficiency)+" ")
+        logging.info("Gaussian beam = ????????????? ")
+        logging.info("Beam area = ???????????? ")
+        logging.info("-------------------------------------")
         
         if cfg.paths.offset_det!=False:
             dati = np.genfromtxt(cfg.paths.offset_det, comments='#')
@@ -134,7 +135,7 @@ class Subscan():
                 tod.pop(i) # = np.delete(tod, i, axis=0)
             #pixel_mask.pop(i) # = np.delete(pixel_mask, i, axis=0)
         num_feed -= (len(excl_feed)-count)
-        print(np.shape(offset_x), num_feed, excl_feed)
+        logging.debug("Noffsets = "+str(np.shape(offset_x))+"\n"+"Nfeeds="+str(num_feed)+"\n"+"Nexcl="+str(excl_feed))
         
         return offset_x, offset_y, tod, num_feed, excl_feed
         

@@ -6,13 +6,13 @@ pixel_size: 60 #arcsec
 num_ch_map: 'all' #numero di canali con cui fare la mappa. Se si vogliono tutti i pixel, scrivere 'all'
 
 paths: #NB: NON METTERE SLASH FINALE SUL PATH!!!!!!!
-  instrumentation: '/Users/eleonora/Desktop/mistral/mirtos_multiprocess/configs/instrum_settings.yaml'
+  instrumentation: '/home/eesopee/MISTRAL/mirtos/configs/instrum_settings.yaml'
   # Location of TOD files
   tods: "/Users/eleonora/Desktop/mistral/OBS/SRT-dicembre/20241214-204624-MISTRAL-JUPITER_TY-2.5_TZ-7"
   #File of the channels' responsivity
   resp: False #'/home/eleobar/MISTRAL_gen+map-maker/optical_responsivity_new_lowSNR_200mK.pkl'
   #File of the channels' offsets
-  offset_det: '/Users/eleonora/Desktop/mistral/mirtos_multiprocess/metadata/chp_offset_rel8_14DEC24_matteo.dat' #/Users/eleonora/Desktop/mirtos/mirtos_multiprocess/feed_offsets_relchp8_02may25.dat
+  offset_det: '/home/eesopee/MISTRAL/mirtos/metadata/chp_offset_rel8_14DEC24_matteo.dat' #/Users/eleonora/Desktop/mirtos/mirtos_multiprocess/feed_offsets_relchp8_02may25.dat
   #'/Users/eleonora/Desktop/mirtos/FOCUS/pixel_offsets_AZ_01SEP24_matteo.dat'
   skydip: False #'/Users/eleonora/Desktop/SRT-marzo/20250404-164449-MISTRAL-GAIN_CAL/20250404-164449-MISTRAL-GAIN_CAL_005_001.fits'
   tau: 0.16
