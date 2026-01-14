@@ -35,9 +35,9 @@ def responsivity(cfg,   subscan):
     num_feed = subscan.num_feed
 
     
-    if type(cfg['paths']['skydip'])==str:
+    if type(cfg.paths.skydip)==str:
         #Calibrates with a skydip 
-        skydip_cal = SkydipCalibration(skydip_fits=cfg['paths']['skydip'], tau_atm=cfg['paths']['tau'], T_atm=cfg['paths']['T_atm'])
+        skydip_cal = SkydipCalibration(skydip_fits=cfg.paths.skydip, tau_atm=cfg.paths.tau, T_atm=cfg.paths.T_atm)
         gain_list =  skydip_cal.resps
     
         #excludes channels not included in the beam map
@@ -50,7 +50,7 @@ def responsivity(cfg,   subscan):
                 gain_list.pop(i) 
 
 
-    elif cfg['paths']['skydip']==False:
+    elif cfg.paths.skydip==False:
         
         gain_list = gain_from_hf_noise(num_feed, sample_freq, subscan.tod_raw)
         
@@ -60,4 +60,4 @@ def calibrate_tod(subscan):
      
 
 
-    return calibrated_tod
+        return 

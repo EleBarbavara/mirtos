@@ -9,7 +9,7 @@ import glob
 from mirtos.core.data_types import Subscan
 from mirtos.mapmaking.mapmaking import Binner
 import mirtos.calibration as calibration
-#from mirtos.cleaner_class import Cleaner
+from mirtos.filtering.filters import Cleaner
 from mirtos.core.config_types import load_config
 
 import logging
@@ -53,8 +53,12 @@ def main():
     logger.info("bin mode = "+binner.mode)
     logger.info("Projection = "+binner.projection)
 
-    if type(cfg['paths']['skydip']) == str:
+    if type(cfg.paths.skydip) == str:
         resps = calibration.gain_calibration.responsivity(cfg, 0, 0, 0)
+    
+    cleaner = Cleaner(cfg)
+    cleaner.init_cleaner()
+
     
 
 if __name__==main():
