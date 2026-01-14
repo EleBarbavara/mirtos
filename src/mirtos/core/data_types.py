@@ -1,51 +1,53 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 import pandas as pd
-import src.mirtos.io as mirtos_io
-from src.mirtos.mapmaking.mapmaking import rot
+from mirtos.core.config_types import Config
+import mirtos.io as mirtos_io
+from mirtos.mapmaking.mapmaking import rot
 
 import numpy as np
 from scipy.constants import c
 
 
 @dataclass
-class Telescope:
+class Telescope():
     """Generic description of a single-dish telescope."""
-    name: str
-    diameter_m: float
+    name: str = ''
+    diameter_m: float = 0.
     central_freq_hz: Optional[float] = None
     central_wavelength_m: Optional[float] = None
     bandwidth_hz: Optional[float] = None
     efficiency: float = 1.0
     fov_arcmin: Optional[float] = None
-    beam: float
-    A_beam: float
-    A_tele: float
+    beam: Optional[float] = None
+    A_beam: Optional[float] = None
+    A_tele: Optional[float] = None
     
-    def __post_init__(self) -> None:
+    def initialize(self, name: str) -> None:
+        self.name = name
         if self.name == 'SRT':
-            self.diameter_m = 60 #m
-            self.bandwidth_hz = 30e9 #Hz
-            self.central_wavelength_m = 0.0033 #m (central wavelenght)
-            self.central_freq_hz = 90e9 #GHz (central frequency)
-            self.end_band = self.central_freq_hz+self.bandwidth_hz
+            self.diameter = 60 #m
+            self.bandwidth = 30e9 #Hz
+            self.central_wavelength = 0.0033 #m (central wavelenght)
+            self.central_freq = 90e9 #GHz (central frequency)
+            self.end_band = self.central_freq+self.bandwidth
             self.efficiency = 0.3
-            self.beam = (self.central_freq_hz/self.diameter_m) #beam    -> beam gaussiano = beam/(2*np.log(2))
+            self.beam = (self.central_freq/self.diameter) #beam    -> beam gaussiano = beam/(2*np.log(2))
             self.A_beam = np.pi*self.beam**2/(4*np.log(2))
-            self.A_tele= np.pi*((self.diameter_m/2)**2) #m2
-            self.fov_arcmin = 4 #arcmin
+            self.A_tele= np.pi*((self.diameter/2)**2) #m2
+            self.fov = 4 #arcmin
             
         elif self.name == 'LAB':
-            self.diameter_m = 0 #m
-            self.bandwidth_hz = 30e9 #Hz
-            self.central_wavelength_m = 0.0033 #m (central wavelenght)
-            self.central_freq_hz = 90e9 #GHz (central frequency)
-            self.end_band = self.central_freq_hz+self.bandwidth_hz
+            self.diameter = 0 #m
+            self.bandwidth = 30e9 #Hz
+            self.central_wavelength = 0.0033 #m (central wavelenght)
+            self.central_freq = 90e9 #GHz (central frequency)
+            self.end_band = self.central_freq+self.bandwidth
             self.efficiency = 0.3
             self.beam = 0
             self.A_beam = 0
             self.A_tele= 0
-            self.fov_arcmin = 4 #arcmin
+            self.fov = 4 #arcmin
         
         elif self.name=='GBT':
             raise ValueError('Observation with this telescope are not currently possible.')
@@ -54,9 +56,9 @@ class Telescope:
 @dataclass
 class Subscan():
     telescope: str = ''
-    dati_beammap : pd.core.frame.DataFrame = {}
+    dati_beammap : pd.core.frame.DataFrame = field(default_factory=dict)
     
-    def initialize(self, cfg: dict, telescope: str = 'SRT'):
+    def initialize(self, cfg: Config, system: str = 'SRT'):
         '''
         mode = radiotelescope with which the observation was carried out.
         
@@ -65,32 +67,31 @@ class Subscan():
         - 'SRT'
         - 'GBT'
         '''
-        self.telescope = telescope
-        
-        if cfg['paths']['offset_det']!=False:
-            dati = np.genfromtxt(cfg['paths']['offset_det'], comments='#')
-            self.dati_beammap = pd.DataFrame(dati, columns=['id', 'lon-offset', 'lat-offset', 'Tcal pol1', 'Tcal pol2', 'flag'])#, 'peak']) #flag: 0=>ok, 1=>bad
-            #IMPORTO GLI OFFSET DEI FEED
-        
-    def init_telescope(self):    
-        if self.telescope == 'SRT':
-            self.tele = Telescope(self.telescope)
+        if system == 'SRT':
+            self.telescope = Telescope()
+            self.telescope.initialize(name=system)
             
             print("-------------------------------------")
-            print("         Telescope: "+self.telescope+"  ")
+            print("         Telescope: "+self.telescope.name+"  ")
             print("-------------------------------------")
-            print("Diameter = "+str(self.tele.diameter_m)+" m")
-            print("Band = "+str(self.tele.central_freq_hz/1e9)+"-"+str(self.tele.end_band/1e9)+" GHz")
-            print("Efficiency = "+str(self.tele.efficiency)+" ")
+            print("Diameter = "+str(self.telescope.diameter)+" m")
+            print("Band = "+str(self.telescope.central_freq/1e9)+"-"+str(self.telescope.end_band/1e9)+" GHz")
+            print("Efficiency = "+str(self.telescope.efficiency)+" ")
             print("Gaussian beam = ????????????? ")
             print("Beam area = ???????????? ")
             print("-------------------------------------")
         
-        elif self.telescope=='GBT':
+        elif system == 'GBT':
             print('Observations with GBT are not currently possible.')
         
         else:
             raise ValueError('Select radiotelescope.')
+        
+        if cfg.paths.offset_det!=False:
+            dati = np.genfromtxt(cfg.paths.offset_det, comments='#')
+            self.dati_beammap = pd.DataFrame(dati, columns=['id', 'lon-offset', 'lat-offset', 'Tcal pol1', 'Tcal pol2', 'flag'])#, 'peak']) #flag: 0=>ok, 1=>bad
+            #IMPORTO GLI OFFSET DEI FEED
+
         
     def exclude_channels(tod, num_feed, dati_beammap):
         excl_feed = np.empty(0)
@@ -130,7 +131,7 @@ class Subscan():
         
     def extract_data(self, filename, config):
         '''
-        This function extract the metadata from the fits file, normalize all the timestream for the optical responsivity
+        This function extract the metadata from the fits file, normalize all the tods for the optical responsivity
         and create the ra, dec and tod arrays of the observation.
         '''
         
@@ -139,7 +140,7 @@ class Subscan():
             hdul = mirtos_io.fits.read_discos_fits(self, filename, config)
             
             if config['paths']['offset_det']!=False:
-                self.offset_x_single, self.offset_y_single, self.timestream_raw, self.num_feed, self.excl_feed = self.exclude_channels(self.timestream_raw, self.num_feed, self.dati_beammap)
+                self.offset_x_single, self.offset_y_single, self.tod_raw, self.num_feed, self.excl_feed = self.exclude_channels(self.tod_raw, self.num_feed, self.dati_beammap)
                 
                 if config['binner']['frame']=='RADEC':
                     self.offset_x = []

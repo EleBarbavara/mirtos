@@ -139,7 +139,7 @@ def create_scan(filename):
                     resps_copy = list(resps_copy)
                     resps_copy.pop(i) 
             
-            np.save('../../metadata/gain.npy', np.array(resps_copy))
+            #np.save('../../metadata/gain.npy', np.array(resps_copy))
             
             for i in range(subscan.num_feed):
                 #TO DO associare i giusti file/dati per la calibrazione

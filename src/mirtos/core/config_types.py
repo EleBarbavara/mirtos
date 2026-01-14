@@ -9,7 +9,7 @@ class PathsConfig:
     """Paths to input and calibration files used by the pipeline."""
     tods: str
     resp: Union[str, bool]
-    offset_pixel: Optional[str]
+    offset_det: Optional[str]
     skydip: Union[str, bool]
     tau: float
     T_atm: float
@@ -66,7 +66,7 @@ def _load_paths(data: dict) -> PathsConfig:
     return PathsConfig(
         tods=data["tods"],
         resp=data.get("resp", False),
-        offset_pixel=data.get("offset_pixel"),
+        offset_det=data.get("offset_det"),
         skydip=data.get("skydip", False),
         tau=data.get("tau", 0.0),
         T_atm=data.get("T_atm", 0.0),
