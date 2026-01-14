@@ -7,6 +7,7 @@ import yaml
 @dataclass
 class PathsConfig:
     """Paths to input and calibration files used by the pipeline."""
+    instrumentation: str
     tods: str
     resp: Union[str, bool]
     offset_det: Optional[str]
@@ -64,6 +65,7 @@ class Config:
 
 def _load_paths(data: dict) -> PathsConfig:
     return PathsConfig(
+        instrumentation=data['instrumentation'],
         tods=data["tods"],
         resp=data.get("resp", False),
         offset_det=data.get("offset_det"),
@@ -133,3 +135,8 @@ def load_config(path: str) -> Config:
         save_map=raw.get("save_map", False),
         save_single_pixel_maps=raw.get("save_single_pixel_maps", False),
     )
+    
+
+
+
+    

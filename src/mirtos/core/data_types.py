@@ -7,51 +7,67 @@ from mirtos.mapmaking.mapmaking import rot
 
 import numpy as np
 from scipy.constants import c
+import yaml
 
 
 @dataclass
 class Telescope():
     """Generic description of a single-dish telescope."""
     name: str = ''
-    diameter_m: float = 0.
-    central_freq_hz: Optional[float] = None
-    central_wavelength_m: Optional[float] = None
-    bandwidth_hz: Optional[float] = None
+    diameter: float = 0.
+    central_freq: Optional[float] = None
+    central_wavelength: Optional[float] = None
+    bandwidth: Optional[float] = None
     efficiency: float = 1.0
-    fov_arcmin: Optional[float] = None
+    fov: Optional[float] = None
     beam: Optional[float] = None
     A_beam: Optional[float] = None
     A_tele: Optional[float] = None
     
-    def initialize(self, name: str) -> None:
-        self.name = name
-        if self.name == 'SRT':
-            self.diameter = 60 #m
-            self.bandwidth = 30e9 #Hz
-            self.central_wavelength = 0.0033 #m (central wavelenght)
-            self.central_freq = 90e9 #GHz (central frequency)
-            self.end_band = self.central_freq+self.bandwidth
-            self.efficiency = 0.3
-            self.beam = (self.central_freq/self.diameter) #beam    -> beam gaussiano = beam/(2*np.log(2))
-            self.A_beam = np.pi*self.beam**2/(4*np.log(2))
-            self.A_tele= np.pi*((self.diameter/2)**2) #m2
-            self.fov = 4 #arcmin
-            
-        elif self.name == 'LAB':
-            self.diameter = 0 #m
-            self.bandwidth = 30e9 #Hz
-            self.central_wavelength = 0.0033 #m (central wavelenght)
-            self.central_freq = 90e9 #GHz (central frequency)
-            self.end_band = self.central_freq+self.bandwidth
-            self.efficiency = 0.3
-            self.beam = 0
-            self.A_beam = 0
-            self.A_tele= 0
-            self.fov = 4 #arcmin
+    def _end_band(self):
+        return self.central_freq + self.bandwidth
+    def _beam(self): 
+        #beam    -> beam gaussiano : beam/(2*np.log(2))
+        return (self.central_freq/self.diameter)
+    def _A_beam(self):
+        return np.pi*self.beam**2/(4*np.log(2))
+    def _A_tele(self):
+        #unit: m2
+        return np.pi*((self.diameter/2)**2)
+
+    def initialize(self, config: Config, name: str) -> None:
+        with open(config.paths.instrumentation, "r") as f:
+            cfg_instr = yaml.safe_load(f)
         
-        elif self.name=='GBT':
-            raise ValueError('Observation with this telescope are not currently possible.')
+        if name in cfg_instr:
+            cfg_instr = cfg_instr[name]
             
+            self.name = name
+            if 'note' in cfg_instr:
+                raise ValueError('Processing and mapmaker for '+self.name+' are not currently possible.')
+            elif cfg_instr['diameter']>1:
+                self.diameter = float(cfg_instr['diameter'])
+                self.bandwidth = float(cfg_instr['bandwidth'])
+                self.central_wavelength = float(cfg_instr['central_wavelength'])
+                self.central_freq = float(cfg_instr['central_freq'])
+                self.efficiency = float(cfg_instr['efficiency'])
+                self.fov = float(cfg_instr['fov'])
+                self.end_band = self._end_band()
+                self.beam = self._beam()
+                self.A_beam = self._A_beam()
+                self.A_tele= self._A_tele()
+            else:
+                self.diameter = float(cfg_instr['diameter'])
+                self.bandwidth = float(cfg_instr['bandwidth'])
+                self.central_wavelength = float(cfg_instr['central_wavelength'])
+                self.central_freq = float(cfg_instr['central_freq'])
+                self.efficiency = float(cfg_instr['efficiency'])
+                self.end_band = self._end_band()
+                self.beam = float(cfg_instr['beam'])
+                self.A_beam = float(cfg_instr['A_beam'])
+                self.A_tele= float(cfg_instr['A_tele'])
+                self.fov = float(cfg_instr['fov'])
+  
     
 @dataclass
 class Subscan():
@@ -67,25 +83,19 @@ class Subscan():
         - 'SRT'
         - 'GBT'
         '''
-        if system == 'SRT':
-            self.telescope = Telescope()
-            self.telescope.initialize(name=system)
-            
-            print("-------------------------------------")
-            print("         Telescope: "+self.telescope.name+"  ")
-            print("-------------------------------------")
-            print("Diameter = "+str(self.telescope.diameter)+" m")
-            print("Band = "+str(self.telescope.central_freq/1e9)+"-"+str(self.telescope.end_band/1e9)+" GHz")
-            print("Efficiency = "+str(self.telescope.efficiency)+" ")
-            print("Gaussian beam = ????????????? ")
-            print("Beam area = ???????????? ")
-            print("-------------------------------------")
         
-        elif system == 'GBT':
-            print('Observations with GBT are not currently possible.')
+        self.telescope = Telescope()
+        self.telescope.initialize(config= cfg, name=system)
         
-        else:
-            raise ValueError('Select radiotelescope.')
+        print("-------------------------------------")
+        print("         Telescope: "+self.telescope.name+"  ")
+        print("-------------------------------------")
+        print("Diameter = "+str(self.telescope.diameter)+" m")
+        print("Band = "+str(self.telescope.central_freq/1e9)+"-"+str(self.telescope.end_band/1e9)+" GHz")
+        print("Efficiency = "+str(self.telescope.efficiency)+" ")
+        print("Gaussian beam = ????????????? ")
+        print("Beam area = ???????????? ")
+        print("-------------------------------------")
         
         if cfg.paths.offset_det!=False:
             dati = np.genfromtxt(cfg.paths.offset_det, comments='#')
