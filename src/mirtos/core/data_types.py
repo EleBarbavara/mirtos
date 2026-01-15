@@ -36,14 +36,14 @@ class Telescope():
         #unit: m2
         return np.pi*((self.diameter/2)**2)
 
-    def initialize(self, config: Config, name: str) -> None:
+    def initialize(self, config: Config) -> None:
         with open(config.paths.instrumentation, "r") as f:
             cfg_instr = yaml.safe_load(f)
         
-        if name in cfg_instr:
-            cfg_instr = cfg_instr[name]
+        if config.telescope in cfg_instr:
+            cfg_instr = cfg_instr[config.telescope]
             
-            self.name = name
+            self.name = config.telescope
             if 'note' in cfg_instr:
                 raise ValueError('Processing and mapmaker for '+self.name+' are not currently possible.')
             elif cfg_instr['diameter']>1:
@@ -75,7 +75,7 @@ class Subscan():
     telescope: str = ''
     dati_beammap : pd.core.frame.DataFrame = field(default_factory=dict)
     
-    def initialize(self, cfg: Config, system: str = 'SRT'):
+    def load_telescope(self, cfg: Config):
         '''
         mode = radiotelescope with which the observation was carried out.
         
@@ -84,9 +84,10 @@ class Subscan():
         - 'SRT'
         - 'GBT'
         '''
+        system = cfg.system
         
         self.telescope = Telescope()
-        self.telescope.initialize(config= cfg, name=system)
+        self.telescope.initialize(config= cfg)
         
         logging.info("-------------------------------------")
         logging.info("         Telescope: "+self.telescope.name+"  ")
@@ -97,7 +98,9 @@ class Subscan():
         logging.info("Gaussian beam = ????????????? ")
         logging.info("Beam area = ???????????? ")
         logging.info("-------------------------------------")
-        
+    
+    def load_pixel_offsets(self, cfg : Config):
+
         if cfg.paths.offset_det!=False:
             dati = np.genfromtxt(cfg.paths.offset_det, comments='#')
             self.dati_beammap = pd.DataFrame(dati, columns=['id', 'lon-offset', 'lat-offset', 'Tcal pol1', 'Tcal pol2', 'flag'])#, 'peak']) #flag: 0=>ok, 1=>bad
@@ -150,24 +153,13 @@ class Subscan():
             
             hdul = mirtos_io.fits.read_discos_fits(self, filename, config)
             
-            if config['paths']['offset_det']!=False:
-                self.offset_x_single, self.offset_y_single, self.tod_raw, self.num_feed, self.excl_feed = self.exclude_channels(self.tod_raw, self.num_feed, self.dati_beammap)
+            if config.paths.offset_det != False:
+                self.xOffset, self.yOffset, self.tod_raw, self.num_feed, self.excl_feed = self.exclude_channels(self.tod_raw, self.num_feed, self.dati_beammap)
                 
-                if config['binner']['frame']=='RADEC':
-                    self.offset_x = []
-                    self.offset_y = []
-                    
-                    for i in range(self.num_feed):
-                                    xoff_rot, yoff_rot = rot([self.offset_x_single[i]] * len(self.par_angle), [self.offset_y_single[i]] * len(self.par_angle), self.par_angle)
-                                    self.offset_x.append(xoff_rot)
-                                    self.offset_y.append(yoff_rot)
-                    
-                else:
-                    self.offset_x = self.offset_x_single
-                    self.offset_y = self.offset_y_single
             else:
-                self.offset_x = np.deg2rad(hdul['FEED TABLE'].data['xOffset '])
-                self.offset_y = np.deg2rad(hdul['FEED TABLE'].data['yOffset '])
+
+                self.xOffset = np.deg2rad(hdul['FEED TABLE'].data['xOffset'])
+                self.yOffset = np.deg2rad(hdul['FEED TABLE'].data['yOffset'])
             
             hdul.close()
 

@@ -38,29 +38,23 @@ def main():
     sorted(tods_files)
     logger.info('Making map of '+str(tods_dir))
     logger.info('Total number of subscan: ' + str(len(tods_files)))
-
-    subscan = Subscan()
-    subscan.initialize(cfg, system=cfg.telescope)
     
     name_target = cfg.name_target
     data_obs = cfg.date_obs
-    bin_mode = cfg.binner.frame
-    projection = cfg.binner.projection
+    bin_mode = cfg.frame
+    projection = cfg.projection
 
-
-    binner = Binner(bin_mode=bin_mode, projection=projection)
-
-    logger.info("bin mode = "+binner.mode)
-    logger.info("Projection = "+binner.projection)
+    logger.info("bin mode = "+mode)
+    logger.info("Projection = "+projection)
 
     if type(cfg.paths.skydip) == str:
         resps = calibration.gain_calibration.responsivity(cfg, 0, 0, 0)
     
-    cleaner = Cleaner(cfg)
-    cleaner.init_cleaner()
 
     part = task.partial(task.enrich_dataframe)
     scan = task.load_data(tods_dir, part)
+
+    
 
 if __name__==main():
     main()

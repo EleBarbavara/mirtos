@@ -225,6 +225,55 @@ class Cleaner():
         
         else:
             raise ValueError('What are you doing with the configs file? Check the filtering section.')
+
+def band_pass_filter(time_series, cuton_freq, cutoff_freq, sampling_rate, order=4):
+
+    """
+    Apply a band-pass Butterworth filter to a time series.
+
+    Parameters:
+    - time_series (array-like): The input time-series metadata.
+    - cuton_freq (float): The lower cutoff frequency (cut-on frequency) in Hz.
+    - cutoff_freq (float): The upper cutoff frequency (cut-off frequency) in Hz.
+    - sampling_rate (float): The sampling rate of the metadata in Hz.
+    - order (int): The order of the Butterworth filter (default is 4).
+
+    Returns:
+    - filtered_series (numpy array): The filtered time-series metadata.
+    """
+    nyquist = 0.5 * sampling_rate  # Nyquist frequency
+    normal_cuton = cuton_freq / nyquist  # Normalized cut-on frequency
+    normal_cutoff = cutoff_freq / nyquist  # Normalized cut-off frequency
     
-        
-        
+    # Design Butterworth band-pass filter
+    b, a = signal.butter(order, [normal_cuton, normal_cutoff], btype='band', analog=False)
+    
+    # Apply the band-pass filter
+    filtered_series = signal.filtfilt(b, a, time_series)
+    
+    return filtered_series
+
+def low_pass_filter(time_series, cutoff_freq, sampling_rate, order=4):
+    """
+    Apply a low-pass Butterworth filter to a time series.
+
+    Parameters:
+    - time_series (array-like): The input time-series metadata.
+    - cutoff_freq (float): The cutoff frequency of the low-pass filter in Hz.
+    - sampling_rate (float): The sampling rate of the metadata in Hz.
+    - order (int): The order of the Butterworth filter (default is 4).
+
+    Returns:
+    - filtered_series (numpy array): The filtered time-series metadata.
+    """
+    nyquist = 0.5 * sampling_rate  # Nyquist frequency
+    normal_cutoff = cutoff_freq / nyquist  # Normalized cutoff frequency
+    
+    # Design Butterworth low-pass filter
+    b, a = signal.butter(order, normal_cutoff, btype='low', analog=False)
+    
+    # Apply the filter
+    filtered_series = signal.filtfilt(b, a, time_series)
+    
+    return filtered_series
+

@@ -18,6 +18,7 @@ class Binner():
                 self.wcs = 0
         
         def proj_radec_to_xy(self, ra,dec,ra0,dec0, projection):
+
                 if projection=='SIN':
                         lam = ra
                         phi = dec
@@ -90,6 +91,8 @@ class Binner():
                 
                 else:      
                         raise ValueError(self.mode + '-> this set of coordinates is not available.')
+                
+                
                 
         def bin_map(self, lat, lon, tods, center_ra, center_dec, npix_x=128, npix_y=128, pixel_size_deg=4/3600, projection="SIN"):
                 
