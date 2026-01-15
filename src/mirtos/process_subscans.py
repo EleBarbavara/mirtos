@@ -101,9 +101,7 @@ def process_subscan(filename, subscan, cfg):
             subscan_table_raw = Table([[0], [0], [0], [0]], 
                                 names=['ch', 'lon', 'lat', 'tod_raw'],
                                 dtype=('i4', 'f8', 'f8', 'f8'))
-            
-            cleaner = Cleaner_masked(cfg) 
-            
+                        
             subscan_table_raw = Table([ch_list, list(np.hstack(lon)), list(np.hstack(lat)), np.hstack(ts_raw)], 
                                 names=['ch', 'lon', 'lat', 'tod_raw'],
                                 dtype=('i4', 'f8', 'f8', 'f8'))
