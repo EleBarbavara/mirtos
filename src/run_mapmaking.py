@@ -59,7 +59,8 @@ def main():
     cleaner = Cleaner(cfg)
     cleaner.init_cleaner()
 
-    
+    part = task.partial(task.enrich_dataframe)
+    scan = task.load_data(tods_dir, part)
 
 if __name__==main():
     main()
