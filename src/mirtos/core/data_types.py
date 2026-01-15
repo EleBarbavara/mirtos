@@ -144,6 +144,9 @@ class Subscan():
         
         
     def extract_data(self, filename, config):
+
+        ### Non sarebbe meglio mettere questa in mirtos.io? Magari la rinominiamo "extract_data_from_discos_fits" per essere cristallini
+
         '''
         This function extract the metadata from the fits file, normalize all the tods for the optical responsivity
         and create the ra, dec and tod arrays of the observation.
@@ -166,6 +169,7 @@ class Subscan():
 
 @dataclass
 class KIDConfig:
+
     """
     Configuration for a Kinetic Inductance Detector (KID).
 
@@ -176,5 +180,25 @@ class KIDConfig:
     resonance_freq_hz : float
         Resonance frequency of the KID in Hz.
     """
+
     id: str
+    ch: str #y
     resonance_freq_hz: float
+    sweep_amplitude : float ## come metto un np.array o simile? Sarebbe carino memorizzare proprio gli sweep per fittarli eventualmente con altre funzioni che sta scrivendo il laureando di Alepaiella
+    sweep_phase : float ## idem
+    quality_factor : float
+    electrical_responsivity : float
+    optical_responsivity : float
+    gain : float #this is the gain that should be estimated with the skydip
+    saturation_down : float #min phase before saturating or going non linear (TBD)
+    saturation_up : float #max phase before saturating or going non linear
+
+@dataclass
+class FocalPlane:
+
+    '''
+    Dataclass containing information of the whole focal plane array.
+
+    '''
+
+

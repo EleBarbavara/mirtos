@@ -9,7 +9,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 import os
-import numpy as np
+import numpy as np+
 from astropy.table import Table, vstack
 
 import lib
@@ -205,5 +205,3 @@ def process_subscans(root_path: str, cfg : Config, enrich_function: type[enrich_
         scan = vstack(processed_subscans) #return a table with all the subscans stacked together
 
         return scan
-
-
