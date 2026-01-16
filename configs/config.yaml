@@ -20,9 +20,8 @@ paths: #NB: NON METTERE SLASH FINALE SUL PATH!!!!!!!
 
 flag_track: True
 
-binner:
-  projection: 'SIN' #'SIN' oppure 'GNOM'
-  frame: 'AZEL' # 'AZEL' oppure 'RADEC' oppure 'EQ'
+projection: 'SIN' #'SIN' oppure 'GNOM'
+frame: 'AZEL' # 'AZEL' oppure 'RADEC'
 
 filtering:
   #info of box around source to mask during baseline removal and filtering

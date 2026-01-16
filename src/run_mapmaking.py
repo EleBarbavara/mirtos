@@ -11,6 +11,7 @@ from mirtos.mapmaking.mapmaking import Binner
 import mirtos.calibration as calibration
 from mirtos.filtering.filters import Cleaner
 from mirtos.core.config_types import load_config
+from mirtos import process_subscans
 
 import logging
 
@@ -44,15 +45,15 @@ def main():
     bin_mode = cfg.frame
     projection = cfg.projection
 
-    logger.info("bin mode = "+mode)
+    logger.info("bin mode = "+bin_mode)
     logger.info("Projection = "+projection)
 
     if type(cfg.paths.skydip) == str:
         resps = calibration.gain_calibration.responsivity(cfg, 0, 0, 0)
     
 
-    part = task.partial(task.enrich_dataframe)
-    scan = task.load_data(tods_dir, part)
+    part = process_subscans.partial(process_subscans.enrich_dataframe)
+    scan = process_subscans.load_data(tods_dir, part)
 
     
 
