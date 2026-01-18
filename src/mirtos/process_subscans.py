@@ -9,7 +9,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 import os
-import numpy as np+
+import numpy as np
 from astropy.table import Table, vstack
 
 import lib
