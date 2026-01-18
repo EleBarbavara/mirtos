@@ -1,0 +1,11 @@
+name: 'mistral'
+
+bandwidth: "30e9 Hz"
+
+central_wavelength: "0.0033 m"
+
+central_freq: "90e9 GHz"
+
+efficiency: 0.3
+
+fov: "4 arcmin"

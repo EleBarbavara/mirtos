@@ -9,6 +9,14 @@ from astropy.io import fits
 def to_fits(file_path: str):
     ...
 
+# i config che usiamo servono qui o potrebbero servire in scan.py?
+# ritorna solo l'hdul mentre  process_subscan_file ritorna solo le cose che servono dell'hdul
+def load_subscan_fits(filename):
+
+    with fits.open(filename) as hdul:
+        return hdul
+
+
 @classmethod
 def read_discocs_fits(cls, filename, config):
     # deve fare quello che fa load_data

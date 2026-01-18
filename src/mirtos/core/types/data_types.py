@@ -1,0 +1,93 @@
+import yaml
+import dacite
+import logging
+import numpy as np
+import pandas as pd
+from pathlib import Path
+import astropy.units as u
+from typing import Optional
+from scipy.constants import c
+from dataclasses import dataclass, field
+
+
+from mirtos.core.config_types import Config
+# from mirtos.mapmaking.mapmaking import rot
+import mirtos.io as mirtos_io
+
+
+@dataclass
+class Subscan():
+    telescope: str = ''
+    dati_beammap : pd.core.frame.DataFrame = field(default_factory=dict)
+
+    # TODO: in focal_plane
+    def load_pixel_offsets(self, cfg : Config):
+
+        if cfg.paths.offset_det!=False:
+            dati = np.genfromtxt(cfg.paths.offset_det, comments='#')
+            self.dati_beammap = pd.DataFrame(dati, columns=['id', 'lon-offset', 'lat-offset', 'Tcal pol1', 'Tcal pol2', 'flag'])#, 'peak']) #flag: 0=>ok, 1=>bad
+            #IMPORTO GLI OFFSET DEI FEED
+
+
+
+    # TODO: capire dove va messa
+    def exclude_channels(tod, num_feed, dati_beammap):
+        excl_feed = np.empty(0)
+        for i in range(len(dati_beammap['flag'])):
+            if dati_beammap['flag'][i]==2: #if dati_beammap['flag'][i]==1:
+                excl_feed = np.append(excl_feed, int(i))
+        excl_feed = excl_feed.astype(int)
+
+        #controllo che nel file degli offset sono inseriti tutti i pixel 
+        if len(dati_beammap['flag'])<num_feed:
+            add_excluded = np.arange(len(dati_beammap['flag']), num_feed)
+            excl_feed = np.concatenate((excl_feed, add_excluded))
+        excl_feed = np.sort(excl_feed)[::-1] #li sorto al contratio perche quando vado a eliminare i ts, se parto dal primo si modificano i numeri del canale e non elimino più quelli che vorrei
+        
+        flag = dati_beammap['flag']<3 #<1
+        offset_x = list(np.deg2rad(dati_beammap['lon-offset'][flag]))
+        offset_y = list(np.deg2rad(dati_beammap['lat-offset'][flag]))
+        #offset_x = list(np.deg2rad(dati_beammap['az off'][flag]))
+        #offset_y = list(np.deg2rad(dati_beammap['el off'][flag]))
+        
+        #Dropping the KIDs with no responsivity
+        tod = list(tod)
+        count = 0
+        
+        for i in excl_feed:
+            if  len(tod)-1<i:
+                #print('No channel ', i)
+                count +=1
+            else:
+                tod.pop(i) # = np.delete(tod, i, axis=0)
+            #pixel_mask.pop(i) # = np.delete(pixel_mask, i, axis=0)
+        num_feed -= (len(excl_feed)-count)
+        logging.debug("Noffsets = "+str(np.shape(offset_x))+"\n"+"Nfeeds="+str(num_feed)+"\n"+"Nexcl="+str(excl_feed))
+        
+        return offset_x, offset_y, tod, num_feed, excl_feed
+        
+        
+    def extract_data(self, filename, config):
+
+        ### Non sarebbe meglio mettere questa in mirtos.io? Magari la rinominiamo "extract_data_from_discos_fits" per essere cristallini
+
+        '''
+        This function extract the metadata from the fits file, normalize all the tods for the optical responsivity
+        and create the ra, dec and tod arrays of the observation.
+        '''
+        
+        if self.mode == 'SRT':
+            
+            hdul = mirtos_io.fits.read_discos_fits(self, filename, config)
+            
+            if config.paths.offset_det != False:
+                self.xOffset, self.yOffset, self.tod_raw, self.num_feed, self.excl_feed = self.exclude_channels(self.tod_raw, self.num_feed, self.dati_beammap)
+                
+            else:
+
+                self.xOffset = np.deg2rad(hdul['FEED TABLE'].data['xOffset'])
+                self.yOffset = np.deg2rad(hdul['FEED TABLE'].data['yOffset'])
+            
+            hdul.close()
+
+

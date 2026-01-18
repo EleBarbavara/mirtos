@@ -1,0 +1,3 @@
+receiver: 'receiver/lab_receiver.yaml'
+
+telescope: 'telescope/LAB.yaml'

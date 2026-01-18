@@ -1,0 +1,3 @@
+receiver: 'receiver/mustang2.yaml'
+
+telescope: 'telescope/GBT.yaml'
