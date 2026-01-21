@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import Optional, Union
+from pathlib import Path
 
 import yaml
 
@@ -104,7 +105,7 @@ def _load_plot_maps(data: dict) -> PlotMapsConfig:
     )
 
 
-def load_config(path: str) -> Config:
+def load_config(path: Path) -> Config:
     """Load a YAML configuration file into a typed Config object."""
     with open(path, "r") as f:
         raw = yaml.safe_load(f)

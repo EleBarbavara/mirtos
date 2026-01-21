@@ -8,6 +8,7 @@ num_ch_map: 'all' #numero di canali con cui fare la mappa. Se si vogliono tutti 
 paths: #NB: NON METTERE SLASH FINALE SUL PATH!!!!!!!
   instrumentation: '/home/eesopee/MISTRAL/mirtos/configs/SRT.yaml'
   # Location of TOD files
+  # TODO: rendere lista (futuro: leggere piu' scan)
   tods: "/Users/eleonora/Desktop/mistral/OBS/SRT-dicembre/20241214-204624-MISTRAL-JUPITER_TY-2.5_TZ-7"
   #File of the channels' responsivity
   resp: False #'/home/eleobar/MISTRAL_gen+map-maker/optical_responsivity_new_lowSNR_200mK.pkl'

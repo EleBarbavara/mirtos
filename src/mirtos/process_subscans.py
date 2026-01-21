@@ -3,7 +3,6 @@ from pandas import DataFrame
 from pathlib import Path
 from itertools import repeat
 from scipy.optimize import curve_fit
-from scipy import signal
 import logging
 
 logger = logging.getLogger(__name__)
@@ -14,8 +13,7 @@ from astropy.table import Table, vstack
 
 import lib
 from subscan_class import Subscan
-from binner import Binner
-from mirtos.mapmaking import projections
+from mirtos.core import projections
 from mirtos.filtering.filters import Cleaner
 from mirtos.core.config_types import Config
 
@@ -51,12 +49,12 @@ def process_subscan(filename, subscan, cfg):
         for i in range(1, subscan.num_feed):
             ch_list += [int(i)]*subscan.num_timestep
             
-        x, y = projections.proj_radec_to_xy(ra=subscan.ra_scan, dec=subscan.dec_scan, 
-                                ra0=subscan.ra_center, dec0=subscan.dec_center, projection=cfg.projection)
+        x, y = projections.proj_radec_to_xy(ra=subscan.ra_scan, dec=subscan.dec_scan,
+                                            ra0=subscan.ra_center, dec0=subscan.dec_center, projection=cfg.projection)
         
         lat, lon = projections.conv_xy_to_latlon(x=x, y=y, par_angle=subscan.par_angle, num_feed=subscan.num_feed,
-                            offset_x = np.array(subscan.xOffset), offset_y=np.array(subscan.yOffset),
-                            center_ra=subscan.ra_center, center_dec=subscan.dec_center, frame = cfg.frame)
+                                                 offset_x = np.array(subscan.xOffset), offset_y=np.array(subscan.yOffset),
+                                                 center_ra=subscan.ra_center, center_dec=subscan.dec_center, frame = cfg.frame)
         
         radius = np.deg2rad(cfg['filtering']['radius']/3600)
         

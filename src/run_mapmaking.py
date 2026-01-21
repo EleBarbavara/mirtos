@@ -33,8 +33,9 @@ def main():
 
     path = sys.argv[1]
     cfg = load_config(path)
-    tods_dir = cfg.paths.tods 
-    #TO DO: estrarre fits file da piu cartelle
+    tods_dir = cfg.paths.tods
+    # TODO: qualsiasi map-maker deve accettare liste di TODs
+    # TODO: estrarre fits file da piu cartelle
     tods_files = glob.glob(os.path.join(tods_dir, "*.fits"))
     sorted(tods_files)
     logger.info('Making map of '+str(tods_dir))
