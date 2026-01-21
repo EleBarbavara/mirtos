@@ -13,6 +13,7 @@ def to_fits(file_path: str):
 # ritorna solo l'hdul mentre  process_subscan_file ritorna solo le cose che servono dell'hdul
 def load_subscan_fits(filename):
 
+    # problema: chiuederebbe in automatico il fits
     with fits.open(filename) as hdul:
         return hdul
 
