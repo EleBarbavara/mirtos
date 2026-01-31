@@ -35,6 +35,7 @@ class FilterParams:
     baseline_poly_deg: int = 4
 
     use_correlation_matrix: bool = False
+    return_common_mode: bool = False
 
 def remove_polynomial_fit(time_: np.ndarray, tods: np.ndarray, deg: int):
 
@@ -98,6 +99,9 @@ def remove_common_mode(time_: np.ndarray, tods: np.ndarray, filter_params: Filte
     passiamo gia' TOD mascherata con linear_detrend
     """
 
+    common_mode = tods.mean(axis=1, keepdims=True)
+    filtered_tods = tods - common_mode
+
     if filter_params.use_correlation_matrix:
 
         # gli passo una matrice di TODS (num_feed x N)
@@ -119,4 +123,7 @@ def remove_common_mode(time_: np.ndarray, tods: np.ndarray, filter_params: Filte
         # voglio num_feed fattori di scala
         b = (x * y).sum(axis=1) / (tods**2).sum(axis=1)
 
-        return tods - b[:, np.newaxis] * common_mode
+        filtered_tods = tods - b[:, np.newaxis] * common_mode
+
+
+    return (filtered_tods, common_mode) if filter_params.return_common_mode else filtered_tods
