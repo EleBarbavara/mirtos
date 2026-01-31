@@ -1,16 +1,11 @@
 import os
-import numpy as np
-import matplotlib.pyplot as plt
-from tqdm import tqdm
-from astropy.io import fits
 import sys
 import glob
 
 from mirtos.core.data_types import Subscan
 from mirtos.mapmaking.mapmaking import Binner
 import mirtos.calibration as calibration
-from mirtos.filtering.filters import Cleaner
-from mirtos.core.config_types import load_config
+from mirtos.core.types.config import load_config
 from mirtos import process_subscans
 
 import logging

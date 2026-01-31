@@ -15,7 +15,7 @@ import lib
 from subscan_class import Subscan
 from mirtos.core import projections
 from mirtos.filtering.filters import Cleaner
-from mirtos.core.config_types import Config
+from mirtos.core.types.config import Config
 
 def lin_func(x, m, q):
     return m*x+q
@@ -79,8 +79,8 @@ def process_subscan(filename, subscan, cfg):
                 #TO DO associare i giusti file/dati per la calibrazione
                 #TO DO calibrazione con piu calibratori? 
                 z = np.pi/2 - np.array(subscan.el_scan + subscan.offset_y_single[i])
-                ts_raw.append(subscan.timestream_raw[i]/(resps_copy[i]*np.exp(-cfg['paths']['tau']/np.cos(z))))
-        
+                ts_raw.append(subscan.timestream_raw[i]/(resps_copy[i]*np.exp(-cfg['paths']['tau']/np.cos(z)))) # lista di TOD calibrate
+
         if radius==0 or radius==False:
             cleaner = Cleaner(cfg)
             
@@ -88,11 +88,11 @@ def process_subscan(filename, subscan, cfg):
             pixel_mask = []
             
             for i in range(subscan.num_feed): 
-                dt_ts, maskfeed = lib.lindetrend(ts_raw[i], subscan.range_timestep, mode=cfg['filtering']['baseline_rem'])
+                dt_ts, maskfeed = lib.lindetrend(ts_raw[i], subscan.range_timestep, mode=cfg['filtering']['baseline_rem']) # rimozione baseline dopo sigma_clip
                 tsdt.append(dt_ts)
                 pixel_mask.append(maskfeed)
             
-            ts_filt, cm = cleaner.filter(subscan, tsdt, pixel_mask) 
+            ts_filt, cm = cleaner.filter(subscan, tsdt, pixel_mask) # tentativo di filtraggio
             pixel_mask = np.hstack(pixel_mask)
             
         else:
@@ -105,7 +105,7 @@ def process_subscan(filename, subscan, cfg):
                                 dtype=('i4', 'f8', 'f8', 'f8'))
             
             dist_from_center = np.sqrt((subscan_table_raw['lon'] - subscan.ra_center)**2 + (subscan_table_raw['lat']-subscan.dec_center)**2)
-            mask = dist_from_center <= radius
+            mask = dist_from_center <= radius # maschera da applicare alla tod dato il raggio dato dallo user
             subscan_masked = np.copy(subscan_table_raw)
             #subscan_masked = subscan_masked[~mask]
             
@@ -121,7 +121,7 @@ def process_subscan(filename, subscan, cfg):
                                 dtype=('i4', 'f8', 'f8', 'f8', 'f8', 'b'))
             
             
-            for n_dt in range(4):
+            for n_dt in range(4): # ricalcolo rimozione della baseline disperata
                 tsdt = []
                 for i in range(subscan.num_feed):
                     if n_dt == 0:
@@ -139,11 +139,12 @@ def process_subscan(filename, subscan, cfg):
                                 names=['ch', 'lon', 'lat', 'tod_raw', 'tod_rb', 'mask', 'tod_dt'],
                                 dtype=('i4', 'f8', 'f8', 'f8', 'f8', 'b', 'f8'))
             
-            ts_filt, cm = cleaner.filter(subscan_table_raw, mask, subscan.num_feed)
+            ts_filt, cm = cleaner.filter(subscan_table_raw, mask, subscan.num_feed) # filtro passa x
             pixel_mask = mask
             
         #ts_bp = [low_pass_filter(tod, cutoff_freq=30, sampling_rate=244.14) for tod in ts_filt]
-        
+
+        # calcolo qualita' dei subscan
         qual_subscans = []
         for i in range(subscan.num_feed):
             if np.nanmax(subscan.timestream_raw[i]) > np.mean(subscan.timestream_raw[i]) + 7*np.std(subscan.timestream_raw[i]) or np.nanmin(subscan.timestream_raw[i]) < np.mean(subscan.timestream_raw[i]) - 7*np.std(subscan.timestream_raw[i]):   
@@ -155,7 +156,8 @@ def process_subscan(filename, subscan, cfg):
             bad_subscans = 'bad'
         else:
             bad_subscans = 'good'
-            
+
+        # tabellona subscan
         ss = [n_subscan]*subscan.num_timestep*subscan.num_feed
         t_list = list(subscan.time)*subscan.num_feed
         subscan_table = Table([ss, ch_list, t_list, list(np.hstack(lon)), list(np.hstack(lat)), list(subscan.az_scan)*subscan.num_feed, 

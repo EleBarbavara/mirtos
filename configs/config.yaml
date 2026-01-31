@@ -6,27 +6,30 @@ pixel_size: 60 #arcsec
 num_ch_map: 'all' #numero di canali con cui fare la mappa. Se si vogliono tutti i pixel, scrivere 'all'
 
 paths: #NB: NON METTERE SLASH FINALE SUL PATH!!!!!!!
-  instrumentation: '/home/eesopee/MISTRAL/mirtos/configs/SRT.yaml'
+  instrumentation: 'configs/instrument/telescope/SRT.yaml'
   # Location of TOD files
   # TODO: rendere lista (futuro: leggere piu' scan)
-  tods: "/Users/eleonora/Desktop/mistral/OBS/SRT-dicembre/20241214-204624-MISTRAL-JUPITER_TY-2.5_TZ-7"
+  tods: "data/input/20250402-212049-MISTRAL-A1995_RA_001_002.fits"
   #File of the channels' responsivity
   resp: False #'/home/eleobar/MISTRAL_gen+map-maker/optical_responsivity_new_lowSNR_200mK.pkl'
   #File of the channels' offsets
-  offset_det: '/home/eesopee/MISTRAL/mirtos/metadata/chp_offset_rel8_14DEC24_matteo.dat' #/Users/eleonora/Desktop/mirtos/mirtos_multiprocess/feed_offsets_relchp8_02may25.dat
+  offset_det: 'metadata/chp_offset_rel8_14DEC24_matteo.dat' #/Users/eleonora/Desktop/mirtos/mirtos_multiprocess/feed_offsets_relchp8_02may25.dat
   #'/Users/eleonora/Desktop/mirtos/FOCUS/pixel_offsets_AZ_01SEP24_matteo.dat'
+  # gli va passato False e non None perche' interpreta None come una stringa. noi convertiamo le
+  # stringhe con Path e quindi si bugga
   skydip: False #'/Users/eleonora/Desktop/SRT-marzo/20250404-164449-MISTRAL-GAIN_CAL/20250404-164449-MISTRAL-GAIN_CAL_005_001.fits'
   tau: 0.16
   T_atm: 267
 
 flag_track: True
 
-projection: 'SIN' #'SIN' oppure 'GNOM'
-frame: 'AZEL' # 'AZEL' oppure 'RADEC'
+binner:
+  projection: 'SIN' #'SIN' oppure 'GNOM'
+  frame: 'AZEL' # 'AZEL' oppure 'RADEC'
 
 filtering:
   #info of box around source to mask during baseline removal and filtering
-  radius: False #arcsec
+  radius: 0 #arcsec
   baseline_rem: 'cutted'
   #If True, the detrended TODs are filtered, or else the raw TODs
   use_detrend_tods: True
@@ -37,6 +40,37 @@ filtering:
   cust_cm: False
   plot_corr_matrix: False
   plt_cust_cm: False
+
+  steps:
+    - op: lowpass_filter # il trattino serve per creare la lista steps che dentro contiene una lista per ogni operazione [lowpass_filter, arguments]
+      scope: local # lo scope indica se il filtro usa o meno informazioni derivanti da tutte le TOD (il filtro comunque e' sempre applicato sulla singola TOD)
+      params:
+        f_cut: 100
+
+    - op: bandpass_filter
+      scope: local
+      params:
+        f_min: 100
+
+    - op: baseline_removal
+      scope: global
+      params:
+        mode: 'cutted'
+
+    - op: common_mode
+      scope: global
+      params:
+        use_correlation_matrix: False
+
+    - op: resample
+      scope: global # non sono sicuro
+      params:
+        factor: 1
+
+    - op: detrend
+      scope: global
+      params: { }
+
 
 unfilt_map: 'dt' #'raw'=TODs raw are used or 'dt'=TODs detrended are used
 
@@ -49,3 +83,4 @@ plot_maps:
 #Save resulting maps in file fits
 save_map: False
 save_single_pixel_maps: False
+

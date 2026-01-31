@@ -1,54 +1,22 @@
-import traceback
 import numpy as np
-from pathlib import Path
 from pprint import pprint
 from dataclasses import dataclass, field
-from concurrent.futures import ProcessPoolExecutor, as_completed
 
-from mirtos.io.fits import load_subscan_fits
-from mirtos.core.types.beam_map import BeamMap
-from mirtos.core.config_types import load_config
+from mirtos.core.multipreprocess import Job, process_all
 
 
 # maggiordomo che da' a process_subscan_file le info che gli servono per processare il subscan
 @dataclass
-class Job:
+class PreprocessPayload:
 
-    id: str # job id
     tod: np.ndarray
     gain: int = 1
     multi: int = 4
 
 
-@dataclass
-class Result:
+def process_tod(job: PreprocessPayload) -> np.ndarray:
 
-    job: Job
-    tod: np.ndarray = None
-    error: str = None
-
-def process_tod(job: Job) -> Result:
-
-    try:
-
-        tod = (job.tod + job.gain) * job.multi
-
-        return Result(job, tod=tod, error='')
-
-    except Exception as e:
-        return Result(job, tod=None, error=traceback.format_exc(3))
-
-
-def process_all_tods(jobs: list[Job]):
-
-    with ProcessPoolExecutor() as executor:
-
-        # schedula esecuzione funzione in parallelo
-        # lista di oggetti Result
-        futures = {executor.submit(process_subscan_file, job): job for job in jobs}
-
-        # ritorna i task completati, ovvero i partial subscans processati
-        return [r.result() for r in as_completed(futures)]
+    return (job.tod + job.gain) * job.multi
 
 
 if __name__ == "__main__":
@@ -61,11 +29,13 @@ if __name__ == "__main__":
 
     for s_i, sub in enumerate(subscans):
         for k_i, kid in enumerate(sub.kids):
-            jobs.append(Job(id=f'{s_i}_{k_i}', tod=kid.tod, gain=gain, multi=multi))
+            jobs.append(
+                Job(f'{s_i}_{k_i}',
+                PreprocessPayload(kid.tod, gain, multi)))
 
-    results = process_all_tods(jobs)
+    res = process_all(jobs, process_tod)
 
-    for res in results:
-        if not res.error:
-            subscan, kid = list(map(int, res.job.id.split('_')))
-            subscans[subscan].kids[kid].tod = res.tod
+    for r in res:
+        if not r.error:
+            subscan, kid = list(map(int, r.job.id.split('_')))
+            subscans[subscan].kids[kid].tod = r.output

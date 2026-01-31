@@ -26,6 +26,7 @@ class BeamMap:
                  valid_kids: bool = False,
                  dataframe_columns=('id', 'lon_offset', 'lat_offset', 'Tcal pol1', 'Tcal pol2', 'flag')):
 
+        # se non c'e' il file della beammap, lancia un'eccezione
         data = read_dat(filename, comments)
 
         df = pd.DataFrame(data, columns=dataframe_columns)
