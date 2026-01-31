@@ -178,19 +178,17 @@ class Subscan:
     # calibration sara' l'oggetto istanziato dalla classe Calibration (modificare skydipcalibration.py)
     def process(self, projection: str, frame: str, calibration: Calibration, radius: Optional[u.deg]):
 
-        x, y = proj_radec_to_xy(self.ra, self.dec, self.ra_center, self.dec_center, projection)
-        lon, lat = conv_xy_to_latlon(x, y,
-                                     self.par_angle,
-                                     self.num_feed,
-                                     self.az,
-                                     self.el,
-                                     self.ra_center,
-                                     self.dec_center,
-                                     frame)
+        # x, y = proj_radec_to_xy(self.ra, self.dec, self.ra_center, self.dec_center, projection)
+        # lon, lat = conv_xy_to_latlon(x, y,
+        #                              self.par_angle,
+        #                              self.num_feed,
+        #                              self.az,
+        #                              self.el,
+        #                              self.ra_center,
+        #                              self.dec_center,
+        #                              frame)
 
-        for kid in self.kids:
-
-            calibration.calibrate(kid)
+        tods_calibrated = calibration.calibrate(self.kids)
 
 
 
