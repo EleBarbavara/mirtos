@@ -1,129 +1,279 @@
-from dataclasses import dataclass
-from typing import Any, Callable
-from enum import Enum
-
-from astropy.stats import sigma_clip
-
 import numpy as np
-from numpy.polynomial.polynomial import Polynomial
+import matplotlib.pyplot as plt
+from tqdm import tqdm
+import pandas as pd
+import scipy 
+import statsmodels.api as sm #sm = silvia masi
+import logging
 
-# callable indica che filter_fn e' di tipo funzione
-# np.ndarray: tod da filtrare
-# dict[str, Any]: parametri presi dallo yaml
-# dict[str, Any]: parametri che gli passo a run_time (ovvero gli passo il "contesto")
-filter_fn = Callable[[np.ndarray, dict[str, Any], dict[str, Any]], np.ndarray]
-# associa ad ogni funzione il suo nome letto dallo yaml
-FILTERS: dict[str, filter_fn]
+def compute_common_mode(ts, pixel_mask, plot=False):
+    #create the clipped timestreams (nan at each clipped element in the timestream)
+        noise_ts = np.copy(ts)
+        
+        #logging.info('1/3 : Compunting the timestream on which compute the common mode.....')
+        for tod, mask in zip(noise_ts, pixel_mask):
+            tod[np.logical_not(mask)]=np.nan
+        
+        #fcompute the average -> common mode
+        #logging.info('2/3 : Compunting the common mode.....')
+        common_mode = np.nanmean(noise_ts, axis=0)
+        
+        if plot == True:
+            #logging.info('3/3 : Plotting the common mode.....')
+            plt.plot(ts[0])
+            plt.plot(common_mode)
+            plt.title('Comparison of Channel 000 timestream and the signal of the general common mode')
+            plt.xlabel('Timestep')
+            plt.ylabel('Phase [rad]')
+            plt.show()
+            
+        return common_mode
+
+def custom_cm(ts, num_feed, corr_matrix, pixel_mask, plot=False):
+    common_mode_ch = []
+    weight = np.copy(corr_matrix)
+    
+    masked_ts = np.ma.array(ts, mask=np.invert(pixel_mask))
+    source_masked = np.ma.MaskedArray(masked_ts, mask=np.isnan(masked_ts))
+    #logging.info('DIMENSIONE CORR MATRIX: ', np.shape(weight))
+    for i in range(0, num_feed):
+        weight[i][i] = 0
+        common_mode_ch.append(np.average(source_masked, weights=weight[i], axis=0))
+    
+    '''
+    plt.plot(ts[0], label='Timestream')
+    plt.plot(ts[0]-common_mode_ch[0], label = 'Timestram-common mode', c='red')
+    #plt.plot(common_mode_ch[0], label='cm')
+    #plt.title('Channel 000 ts - its individual common mode')
+    plt.xlabel('Timestep')
+    plt.ylabel('Phase [rad]')
+    plt.legend()
+    plt.show()'''
+    
+    model = []
+    b1 = []
+    #b0 = []
+    masked_cm_ch = np.ma.array(common_mode_ch, mask=np.invert(pixel_mask))
+    for i in range(0, num_feed):
+        model = sm.OLS(masked_ts[i], masked_cm_ch[i]).fit()
+        #logging.info(model.summary())
+        b1.append(model.params[0]) #slope of linear regression -> costante moltiplicativa da mettere davanti al common mode
+        #b0 = model.params[1] #intercept of linear regression
+    '''
+    plt.hist(b1, bins=150, label='$b_1$ from linear regression')
+    plt.axvline(statistics.mean(b1), color='red', label='Mean value of $b_1$')
+    #plt.title('Histogram of b1 constant from linear regression')
+    plt.xlabel('$b_1$')
+    plt.ylabel('N')
+    plt.legend()
+    plt.show()
+
+    plt.hist(b0, bins=150, label='$b_0$ from linear regression')
+    plt.axvline(statistics.mean(b1), color='red', label='Mean value of $b_0$')
+    #plt.title('Histogram of b1 constant from linear regression')
+    plt.xlabel('$b_0$')
+    plt.ylabel('N')
+    plt.legend()
+    plt.show()
+
+    plt.plot(ts[0], label='Original timestream')
+    plt.plot(ts[0]-b1[0]*common_mode_ch[0], label = 'Filtered timestream', c='red')
+    plt.xlabel('Timestep')
+    plt.ylabel('Phase [rad]')
+    plt.legend()
+    plt.show()'''
+    
+    if plot==True:
+        logging.info('3/3 : Plotting an example of timestrea and PSD before and after removing the customized common mode.......')
+        ts_raw_000 = ts[0]
+        ts_filtered_000 = ts[0]-b1[0]*common_mode_ch[0]
+
+        f, P= scipy.signal.periodogram(ts_raw_000[pixel_mask[0]], fs=244.14, scaling='density')
+        f1, P1= scipy.signal.periodogram(ts_filtered_000[pixel_mask[0]], fs=244.14, scaling='density')
+        
+        fig, (ax1,ax2) = plt.subplots(1,2, figsize=(13,5))
+        ax1.plot(ts_raw_000, label='Original timestream')
+        ax1.plot(ts_filtered_000, label = 'Filtered timestream', c='red')
+        ax1.set_xlabel('Timestep')
+        ax1.set_ylabel('Phase [rad]')
+        ax1.legend()
+
+        ax2.plot(f[1:], np.sqrt(P[1:]), label='Original timestream')
+        ax2.plot(f1[1:], np.sqrt(P1[1:]), label = 'Filtered timestream', c='red')
+        ax2.set_xscale("log")
+        ax2.set_yscale("log")
+        ax2.set_ylabel(r'PSD [rad/$\sqrt{Hz}$]')
+        ax2.set_xlabel('Frequency [Hz]')
+        #plt.title('Channel 000 filtered power spectal density')
+        ax2.legend()
+        plt.show()
+    
+    #casting a np.ndarray
+    common_mode_ch = np.array(np.array(common_mode_ch))
+    b1 = np.array(np.array(b1))
+    return common_mode_ch, b1, source_masked
+
+def corr_matrix(ts, pixel_mask, plot=False):
+    ts_copy = np.copy(ts)
+    masks = np.copy(np.array(np.array(pixel_mask)))
+    ts_masked = np.copy(np.array(np.array(ts_copy)))
+    for tod, mask in zip(ts_masked, masks):
+        tod[np.logical_not(mask)]=np.nan
+    
+    ts_masked = pd.DataFrame(ts_masked).T
+
+    corr_matrix = ts_masked.corr()
+    
+    if plot == True :
+        fig, ax = plt.subplots()
+        im = ax.imshow(corr_matrix, cmap='coolwarm')
+        im.set_clim(-1, 1)
+        cbar = ax.figure.colorbar(im, ax=ax)#, format='% .2f' #quando c'è coeff di corr sull'immagine
+        plt.title('Channels correlation matrix (only detrended)')
+        plt.xlabel('Channel')
+        plt.ylabel('Channel')
+        plt.show()
+    
+    return np.matrix(corr_matrix)
 
 
-class LinearDetrendMode(Enum):
-    CUTTED = 'cutted'
-    SIGMA = 'sigma'
-    NONE = 'none'
+class Cleaner():
+    '''
+        This class refers to the metadata filteirng. Its methods compute the general and customized common mode for each feed in order to minimize the noise
+        (removing the pulse tube noise). The correlation matrixes are shown in order to see the progress done during this analysis.
+        Then, a map of the filtered metadata is shown + a map in the region of high coverage of the scan.
+        '''
+    def __init__(self, cfg):
+        #definisco tutte le variabili che poi userò con la classe MapMaker
+        self.cfg = cfg
+        self.cm = []
+        self.corr_matrix = []
+        self.b1 = []
+        self.cust_common_mode = []
+        
+        if all(mode == True for mode in [self.cfg.filtering.gen_cm, self.cfg.filtering.cust_cm]):
+            raise ValueError('Choose one method to filter the metadata: either with the general common mode or the custom common mode.')
+        
+        elif all(mode == False for mode in [self.cfg.filtering.gen_cm, self.cfg.filtering.cust_cm]):
+            self.cm_type = 'not_filtered'
+            
+        elif self.cfg.filtering.gen_cm == True:
+            self.cm_type =  'gen_cm'
+                
+        elif self.cfg.filtering.cust_cm == True:
+            self.cm_type = 'cust_cm'
+        
+    def init_cleaner(self):    
+        if all(mode == True for mode in [self.cfg.filtering.gen_cm, self.cfg.filtering.cust_cm]):
+            raise ValueError('Choose one method to filter the metadata: either with the general common mode or the custom common mode.')
+        
+        elif all(mode == False for mode in [self.cfg.filtering.gen_cm, self.cfg.filtering.cust_cm]):
+            logging.info('-----> You choose to not filter the metadata, are you sure? :)')
+            self.cm_type = 'not_filtered'
+            
+        elif self.cfg.filtering.gen_cm == True:
+            logging.info('Filtering the metadata with the general common mode.')
+            self.cm_type =  'gen_cm'
+                
+        elif self.cfg.filtering.cust_cm == True:
+            logging.info('Filtering the metadata with the customized common mode.')
+            self.cm_type = 'cust_cm'
+        
+    def filter(self, subscan, tsdt, pixel_mask):
+        if self.cfg.filtering.use_detrend_tods==True:
+            ts = np.copy(tsdt)
+        else:
+            ts = np.copy(subscan.timestream_raw)
+        
+        if all(mode == True for mode in [self.cfg.filtering.gen_cm, self.cfg.filtering.cust_cm]):
+            raise ValueError('Choose one method to filter the metadata: either with the general common mode or the custom common mode.')
+        
+        elif all(mode == False for mode in [self.cfg.filtering.gen_cm, self.cfg.filtering.cust_cm]):
+            return ts, [0]*len(ts[0])*subscan.num_feed
+            
+        elif self.cfg.filtering.gen_cm == True:
+            cm = compute_common_mode(ts, pixel_mask, plot=self.cfg.filtering.plot_cm)
+            self.cm = cm
+            
+            ts_filt = []
+            for i in range(subscan.num_feed):
+                ts_filt.append(ts[i] - cm)
+            
+            cms = [cm]*subscan.num_feed
+            return ts_filt, cms
+                
+        
+        elif self.cfg.filtering.cust_cm == True:
+            corr_matrix_dt = corr_matrix(ts, pixel_mask, plot=self.cfg.filtering.plot_corr_matrix) 
 
-# TODO: da mettere nel file config.py
-@dataclass(frozen=True)
-class FilterParams:
+            self.cust_common_mode, self.b1, self.source_masked = custom_cm(ts, 
+                                            subscan.num_feed, 
+                                            corr_matrix_dt, 
+                                            pixel_mask,
+                                            plot=self.cfg.filtering.plt_cust_cm)
+            
+            ts_filt = []
+            cms = []
+            for i in range(subscan.num_feed):
+                ts_filt.append(ts[i] - self.b1[i]*self.cust_common_mode[i])
+                cms.append(self.b1[i]*self.cust_common_mode[i]) 
 
-    mode: LinearDetrendMode
-    radius: float = 0
-    offset: float = 0.1
+            self.cms = cms
+            self.corr_matrix_cust = corr_matrix(ts=ts_filt, pixel_mask=pixel_mask, plot=self.cfg.filtering.plot_corr_matrix)
+            
+            return ts_filt, cms
+        
+        else:
+            raise ValueError('What are you doing with the configs file? Check the filtering section.')
 
-    sigma: float = 6
-    maxiters: int = 10
-
-    baseline_poly_deg: int = 4
-
-    use_correlation_matrix: bool = False
-    return_common_mode: bool = False
-
-def remove_polynomial_fit(time_: np.ndarray, tods: np.ndarray, deg: int):
-
-    # accetta dati ordinati per dimensione temporale
-    p = Polynomial.fit(time_, tods, deg)
-
-    # a polynomial passo la mtrice tods traposta, ma tods e' non trasposta
-    # quindi traspondo p(time_)
-    return tods - p(time_).T
-
-def linear_detrend(time_: np.ndarray, tods: np.ndarray, filter_params: FilterParams):
+def band_pass_filter(time_series, cuton_freq, cutoff_freq, sampling_rate, order=4):
 
     """
-    a linear_detrend facciamo calcolare la maschera da applicare alla TOD e ritorniamo
-    la TOD mascherata e la maschera
+    Apply a band-pass Butterworth filter to a time series.
+
+    Parameters:
+    - time_series (array-like): The input time-series metadata.
+    - cuton_freq (float): The lower cutoff frequency (cut-on frequency) in Hz.
+    - cutoff_freq (float): The upper cutoff frequency (cut-off frequency) in Hz.
+    - sampling_rate (float): The sampling rate of the metadata in Hz.
+    - order (int): The order of the Butterworth filter (default is 4).
+
+    Returns:
+    - filtered_series (numpy array): The filtered time-series metadata.
     """
+    nyquist = 0.5 * sampling_rate  # Nyquist frequency
+    normal_cuton = cuton_freq / nyquist  # Normalized cut-on frequency
+    normal_cutoff = cutoff_freq / nyquist  # Normalized cut-off frequency
+    
+    # Design Butterworth band-pass filter
+    b, a = signal.butter(order, [normal_cuton, normal_cutoff], btype='band', analog=False)
+    
+    # Apply the band-pass filter
+    filtered_series = signal.filtfilt(b, a, time_series)
+    
+    return filtered_series
 
-    # time_ ha dim N (samples)
-    # tods ha dim num_feed x N
-
-
-    if filter_params.mode.value == 'cutted':
-
-        offset = int(len(tods) * filter_params.offset)
-        mask = np.zeros(len(tods), dtype=bool)
-        mask[offset:-offset] = True
-
-    # per gestire il caso “None” e il caso generico allo stesso modo nel costrutto del match case, si usa questa sintassi:
-    elif filter_params.mode.value == 'sigma':
-
-        # false: valori al di sopra della sigma, true: valori al di sotto della sigma
-        mask = ~sigma_clip(tods, sigma=filter_params.sigma, maxiters=filter_params.maxiters).mask
-
-
-    # per gestire il caso “None” (deterend non applicato) e un caso non programmato di default (no cutted o sigma)
-    # allo stesso modo nel costrutto del match case, si usa questa sintassi
-    else:
-
-        return tods, np.zeros(len(tods), dtype=bool)
-
-    time_fit = time_[mask]
-    tods_fit = tods[:, mask].T
-
-
-    # a polynomial passo la mtrice tods traposta, ma tods e' non trasposta
-    # quindi traspondo p(time_)
-    return remove_polynomial_fit(time_fit, tods_fit, 1), mask
-
-
-def remove_baseline(time_: np.ndarray, tods: np.ndarray, filter_params: FilterParams):
-
+def low_pass_filter(time_series, cutoff_freq, sampling_rate, order=4):
     """
-    remove_baseline ha in input la TOD gia' mascherata e rimuove la baseline
+    Apply a low-pass Butterworth filter to a time series.
+
+    Parameters:
+    - time_series (array-like): The input time-series metadata.
+    - cutoff_freq (float): The cutoff frequency of the low-pass filter in Hz.
+    - sampling_rate (float): The sampling rate of the metadata in Hz.
+    - order (int): The order of the Butterworth filter (default is 4).
+
+    Returns:
+    - filtered_series (numpy array): The filtered time-series metadata.
     """
+    nyquist = 0.5 * sampling_rate  # Nyquist frequency
+    normal_cutoff = cutoff_freq / nyquist  # Normalized cutoff frequency
+    
+    # Design Butterworth low-pass filter
+    b, a = signal.butter(order, normal_cutoff, btype='low', analog=False)
+    
+    # Apply the filter
+    filtered_series = signal.filtfilt(b, a, time_series)
+    
+    return filtered_series
 
-    return tods - remove_polynomial_fit(time_, tods, filter_params.baseline_poly_deg)
-
-def remove_common_mode(time_: np.ndarray, tods: np.ndarray, filter_params: FilterParams):
-
-    """
-    passiamo gia' TOD mascherata con linear_detrend
-    """
-
-    common_mode = tods.mean(axis=1, keepdims=True)
-    filtered_tods = tods - common_mode
-
-    if filter_params.use_correlation_matrix:
-
-        # gli passo una matrice di TODS (num_feed x N)
-        # ottengo la matrice num_feed x num_feed
-        corr = np.corrcoef(tods.T)
-
-        # num_feed x N
-        num = corr @ tods
-        # num_feed -> num_feed x 1 per rendere la divisione consistente per la tassonomia numpy
-        denom = corr.sum(axis=1)[:, np.newaxis]
-
-        # num_feed x N
-        common_mode = num / denom
-
-        # coeff from linear regression: b = y * x / sum(x**2) con x = common_mode
-        # e y = tods (sulla base di quanto fate con OLS)
-        x = common_mode
-        y = tods
-        # voglio num_feed fattori di scala
-        b = (x * y).sum(axis=1) / (tods**2).sum(axis=1)
-
-        filtered_tods = tods - b[:, np.newaxis] * common_mode
-
-
-    return (filtered_tods, common_mode) if filter_params.return_common_mode else filtered_tods

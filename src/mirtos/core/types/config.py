@@ -19,17 +19,33 @@ class PathsConfig:
     T_atm: float
 
 
-@dataclass
+@dataclass(frozen=True)
+class DetectorValidityConfig:
+    upper_threshold: float = 7
+    lower_threshold: float = 7
+
+
+class BinnerProjection(Enum):
+    SIN = 'SIN'
+    GNOM = 'GNOM'
+
+
+class BinnerFrame(Enum):
+    AZEL = 'AZEL'
+    RADEC = 'RADEC'
+
+
+@dataclass(frozen=True)
 class BinnerConfig:
-    """Configuration of the map binning."""
-    projection: str  # e.g. 'SIN' or 'GNOM'
-    frame: str       # e.g. 'AZEL', 'RADEC', 'EQ'
+    """Configuration of the map binning """
+    projection: BinnerProjection  # e.g. 'SIN' or 'GNOM'
+    frame: BinnerFrame  # e.g. 'AZEL', 'RADEC', 'EQ'
 
 
-class StepScope(Enum):
-    LOCAL = 1
-    GLOBAL = 2
-
+class LinearDetrendMode(Enum):
+    CUTTED = 'cutted'
+    SIGMA = 'sigma'
+    NONE = 'none'
 
 @dataclass(frozen=True)
 class Step:
@@ -37,22 +53,26 @@ class Step:
     dataclasse che contiene le informazioni che stanno sotto la chiave steps di config.yaml
     """
     op: str
-    scope: StepScope
     params: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class FilteringDebug:
+    plot_cm: bool
+    plot_corr_matrix: bool
 
 
 @dataclass(frozen=True)
 class FilteringConfig:
     """Configuration for TOD filtering and baseline removal."""
     radius: Union[float, bool]  # in arcsec, or False if not used
-    baseline_rem: str           # e.g. 'cutted'
-    use_detrend_tods: bool
-    gen_cm: bool
-    plot_cm: bool
-    cust_cm: bool
-    plot_corr_matrix: bool
-    plt_cust_cm: bool
-    steps: list[Step] # lista di filtri da applicare
+    steps: list[Step]  # lista di filtri da applicare
+    debug: FilteringDebug
+
+    def __post_init__(self):
+        for step in self.steps:
+            if step.op == "linear_detrend":
+                step.params["mode"] = LinearDetrendMode[step.params["mode"].upper()]
 
 
 @dataclass
@@ -80,6 +100,7 @@ class Config:
     plot_maps: PlotMapsConfig
     save_map: bool
     save_single_pixel_maps: bool
+    detector_validity: DetectorValidityConfig
 
     def __post_init__(self):
         base_path = Path(__file__).parents[4]
@@ -94,7 +115,7 @@ class Config:
             value = getattr(self.paths, field)
 
             if isinstance(value, str):
-                setattr(self.paths,field, (base_path / value).expanduser().resolve())
+                setattr(self.paths, field, (base_path / value).expanduser().resolve())
                 assert getattr(self.paths, field).exists(), f"{field} does not exist: {getattr(self.paths, field)}"
 
 
@@ -102,11 +123,12 @@ def load_config(path: Path) -> Config:
     """Load a YAML configuration file into a typed Config object."""
     data = yaml.safe_load(path.read_text())
 
-    dacite_cfg = dacite.Config(
-        type_hooks={StepScope: lambda v: (StepScope[v.upper()] if isinstance(v, str) else StepScope(v))}
-    )
+    type_hooks = {
+        BinnerProjection: BinnerProjection,
+        BinnerFrame: BinnerFrame
+    }
 
-    return dacite.from_dict(Config, data, config=dacite_cfg)
+    return dacite.from_dict(Config, data, config=dacite.Config(type_hooks=type_hooks))
 
 
 if __name__ == "__main__":

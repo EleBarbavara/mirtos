@@ -14,7 +14,7 @@ from astropy.table import Table, vstack
 import lib
 from subscan_class import Subscan
 from mirtos.core import projections
-from mirtos.filtering.filters import Cleaner
+from mirtos.filtering.filters_copy import Cleaner
 from mirtos.core.types.config import Config
 
 def lin_func(x, m, q):
@@ -111,6 +111,7 @@ def process_subscan(filename, subscan, cfg):
             
             for i in range(len(subscan_table_raw)):
                 if mask[i] is True:
+                    # sta mettendo tutta la colonna tod_raw a nan
                     subscan_masked['tod_raw'] = np.nan
             
             tsdt_rb = []
@@ -120,19 +121,19 @@ def process_subscan(filename, subscan, cfg):
                                 names=['ch', 'lon', 'lat', 'tod_raw', 'tod_rb', 'mask'],
                                 dtype=('i4', 'f8', 'f8', 'f8', 'f8', 'b'))
             
-            
-            for n_dt in range(4): # ricalcolo rimozione della baseline disperata
-                tsdt = []
-                for i in range(subscan.num_feed):
-                    if n_dt == 0:
-                        tod = subscan_table_raw[subscan_table_raw['ch']==i]['tod_rb']
-                    else:
-                        tod = ts[i]
-                    maski = subscan_table_raw[subscan_table_raw['ch']==i]['mask']
-                    time = range(len(tod[maski]))
-                    parfit, covfit = curve_fit(f=lin_func, xdata=time, ydata=tod[maski])
-                    tsdt.append(tod - lin_func(range(len(tod)), *parfit))
-                ts = np.copy(tsdt)
+            #
+            # for n_dt in range(4): # ricalcolo rimozione della baseline disperata
+            #     tsdt = []
+            #     for i in range(subscan.num_feed):
+            #         if n_dt == 0:
+            #             tod = subscan_table_raw[subscan_table_raw['ch']==i]['tod_rb']
+            #         else:
+            #             tod = ts[i]
+            #         maski = subscan_table_raw[subscan_table_raw['ch']==i]['mask']
+            #         time = range(len(tod[maski]))
+            #         parfit, covfit = curve_fit(f=lin_func, xdata=time, ydata=tod[maski])
+            #         tsdt.append(tod - lin_func(range(len(tod)), *parfit))
+            #     ts = np.copy(tsdt)
                 
                 
             subscan_table_raw = Table([ch_list, list(np.hstack(lon)), list(np.hstack(lat)), np.hstack(ts_raw), np.hstack(tsdt_rb), mask, np.hstack(tsdt)], 

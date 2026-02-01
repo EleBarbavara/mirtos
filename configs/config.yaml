@@ -23,6 +23,11 @@ paths: #NB: NON METTERE SLASH FINALE SUL PATH!!!!!!!
 
 flag_track: True
 
+detector_validity:
+  upper_threshold: 7
+  lower_threshold: 7
+
+
 binner:
   projection: 'SIN' #'SIN' oppure 'GNOM'
   frame: 'AZEL' # 'AZEL' oppure 'RADEC'
@@ -30,47 +35,52 @@ binner:
 filtering:
   #info of box around source to mask during baseline removal and filtering
   radius: 0 #arcsec
-  baseline_rem: 'cutted'
-  #If True, the detrended TODs are filtered, or else the raw TODs
-  use_detrend_tods: True
-  #If True, the filtering is done only computing the generale commone mode
-  gen_cm: False
-  plot_cm: False
-  #If True, the filtering is done computing the custom commone mode for each pixel
-  cust_cm: False
-  plot_corr_matrix: False
-  plt_cust_cm: False
+#  baseline_rem: 'cutted'
+#  #If True, the detrended TODs are filtered, or else the raw TODs
+#  use_detrend_tods: True
+#  #If True, the filtering is done only computing the generale commone mode
+#  gen_cm: False
+#  plot_cm: False
+#  #If True, the filtering is done computing the custom commone mode for each pixel
+#  cust_cm: False
+#  plot_corr_matrix: False
+#  plt_cust_cm: False
+
+  debug:
+    plot_cm: False
+    plot_corr_matrix: False
 
   steps:
     - op: lowpass_filter # il trattino serve per creare la lista steps che dentro contiene una lista per ogni operazione [lowpass_filter, arguments]
-      scope: local # lo scope indica se il filtro usa o meno informazioni derivanti da tutte le TOD (il filtro comunque e' sempre applicato sulla singola TOD)
       params:
-        f_cut: 100
+        btype: 'lowpass'
+        cutoff_freq: 60
+        butter_order: 4
 
     - op: bandpass_filter
-      scope: local
       params:
-        f_min: 100
+        btype: 'bandpass'
+        cuton_freq: 0
+        cutoff_freq: 60
+        butter_order: 4
 
-    - op: baseline_removal
-      scope: global
+
+    - op: remove_baseline
       params:
-        mode: 'cutted'
+        baseline_poly_deg: 4
 
-    - op: common_mode
-      scope: global
+    - op: remove_common_mode
       params:
         use_correlation_matrix: False
         return_common_mode: False
 
-    - op: resample
-      scope: global # non sono sicuro
+    - op: linear_detrend
       params:
-        factor: 1
+        mode: 'cutted'
+        offset: 0.1
+        sigma: 6
+        maxiters: 10
 
-    - op: detrend
-      scope: global
-      params: { }
 
 
 unfilt_map: 'dt' #'raw'=TODs raw are used or 'dt'=TODs detrended are used

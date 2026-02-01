@@ -1,6 +1,6 @@
 import numpy as np
 from astropy.wcs import WCS
-
+from .types.config import BinnerProjection, BinnerFrame
 
 @np.vectorize
 def rot(x, y, theta):
@@ -22,16 +22,16 @@ def rot(x, y, theta):
 
     return ra_f, dec_f
 
-def proj_radec_to_xy(ra,dec,ra0,dec0, projection):
+def proj_radec_to_xy(ra,dec,ra0,dec0, projection: BinnerProjection):
         
-    if projection == 'SIN':
+    if projection == BinnerProjection.SIN:
         x = (ra - ra0) * np.cos(dec) + ra0
         y = dec
 
         return x, y
 
 
-    if projection == 'GNOM':
+    if projection == BinnerProjection.GNOM:
         #https://mathworld.wolfram.com/GnomonicProjection.html
 
         c = np.sin(dec0)*np.sin(dec) + np.cos(dec0)*np.cos(dec)*np.cos(ra-ra0)
@@ -43,24 +43,11 @@ def proj_radec_to_xy(ra,dec,ra0,dec0, projection):
     else:
         raise ValueError(projection, ': this projection not available.')
 
-def conv_xy_to_latlon(x, y, par_angle, xOffset, yOffset,  center_ra, center_dec, frame):
+def conv_xy_to_latlon(x, y, par_angle, xOffset, yOffset,  center_ra, center_dec, frame: BinnerFrame):
     lon = []
     lat = []
     
-    if frame == 'RADEC':
-
-        '''  
-        xoff_rot = []
-        yoff_rot = []
-        for i in range(num_feed):
-                x_rot, y_rot = lib.rot([offset_x[i]]*len(par_angle), [offset_y[i]]*len(par_angle), par_angle)
-                xoff_rot.append(x_rot)
-                yoff_rot.append(y_rot)
-        print(np.shape(xoff_rot)) 
-        '''     
-
-        offset_x = []
-        offset_y = []
+    if frame == BinnerFrame.RADEC:
 
         # il ciclo for mi riduce di una dimensione, ma e' possibile lavorare in modo matriciale
         # vettori colonna num_feed x 1
@@ -83,7 +70,7 @@ def conv_xy_to_latlon(x, y, par_angle, xOffset, yOffset,  center_ra, center_dec,
 
         return lat, lon
 
-    elif frame == 'AZEL':
+    elif frame == BinnerFrame.AZEL:
 
         # x_rot e y_rot hanno dimensione 1 x N
         x_rot, y_rot = rot(x - center_ra, y - center_dec, par_angle)
@@ -124,18 +111,18 @@ if __name__ == "__main__":
     # calcolo i risultati delle funzioni della nuova versione di projections.py
     rot_x, rot_y = rot(ra, dec, par_angle)
 
-    x_sin, y_sin = proj_radec_to_xy(ra, dec, center_ra, center_dec, 'SIN')
-    x_gnom, y_gnom = proj_radec_to_xy(ra, dec, center_ra, center_dec, 'GNOM')
+    x_sin, y_sin = proj_radec_to_xy(ra, dec, center_ra, center_dec, BinnerProjection.SIN)
+    x_gnom, y_gnom = proj_radec_to_xy(ra, dec, center_ra, center_dec, BinnerProjection.GNOM)
 
     lat_radec_sin, lon_radec_sin = conv_xy_to_latlon(x_sin, y_sin, par_angle, xOffset, yOffset, center_ra,
-                                                     center_dec, 'RADEC')
+                                                     center_dec, BinnerFrame.RADEC)
     lat_azel_sin, lon_azel_sin = conv_xy_to_latlon(x_sin, y_sin, par_angle, xOffset, yOffset, center_ra,
-                                                   center_dec, 'AZEL')
+                                                   center_dec, BinnerFrame.AZEL)
 
     lat_radec_gnom, lon_radec_gnom = conv_xy_to_latlon(x_gnom, y_gnom, par_angle, xOffset, yOffset, center_ra,
-                                                       center_dec, 'RADEC')
+                                                       center_dec, BinnerFrame.RADEC)
     lat_azel_gnom, lon_azel_gnom = conv_xy_to_latlon(x_gnom, y_gnom, par_angle, xOffset, yOffset, center_ra,
-                                                     center_dec, 'AZEL')
+                                                     center_dec, BinnerFrame.AZEL)
 
 
     np.savez('../../../test/projections/output_projection_test_data.npz',

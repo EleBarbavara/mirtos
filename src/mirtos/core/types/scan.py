@@ -8,11 +8,13 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from mirtos.calibration.calibration import Calibration, SkyDipCalibration
+from mirtos.core.projections import proj_radec_to_xy, conv_xy_to_latlon
 from mirtos.core.types.beam_map import BeamMap
-from mirtos.core.types.config import load_config
+from mirtos.core.types.config import load_config, DetectorValidityConfig, BinnerFrame, BinnerProjection
 from mirtos.core.types.focal_plane import KID, Position
 from mirtos.core.multipreprocess import process_all, Job
-from mirtos.core.projections import proj_radec_to_xy, conv_xy_to_latlon
+
+from mirtos.filtering.filters import remove_baseline
 
 
 @dataclass
@@ -24,7 +26,7 @@ class Subscan:
     dec: np.ndarray
     az: np.ndarray
     el: np.ndarray
-    ra_center: float # TODO: controllare se float
+    ra_center: float
     dec_center: float
     par_angle: np.ndarray
     flag_track: np.ndarray
@@ -45,20 +47,16 @@ class Subscan:
     def sampling_time(self):
         return 1 / self.sampling_frequency * u.second
 
-    @property
-    def common_mode(self):
-        ...
-
     @classmethod
-    def from_discos_fits(cls, subscan_filename: Path,
-                         beammap_filename: Path,
-                         flag_track: bool = False,
+    def from_discos_fits(cls,
+                         subscan_filename: Path,
+                         detector_validity: DetectorValidityConfig,
+                         beammap_filename: Path | None, # puo' esserci o meno la beamap
+                         binner_frame: BinnerFrame = BinnerFrame.AZEL, # lo deve passare a from_dat
+                         flag_track_: bool = False,
                          angle_offset: float = 0):
 
         # TODO: per ora gli passiamo angle_offset, da capire dove va immesso
-
-        if not beammap_filename.exists():
-            raise FileNotFoundError(f"Beammap file {beammap_filename} not found.")
 
         id_subscan = int(subscan_filename.stem.split('_')[-1])
 
@@ -68,7 +66,6 @@ class Subscan:
         # obs_datetime.date() mi da' anno mese e giorno
         # obs_datetime.time().hour mi da' l'ora
         obs_datetime = datetime.strptime('_'.join(subscan_filename.stem.split('-')[:2]), '%Y%m%d_%H%M%S')
-
 
         with fits.open(subscan_filename) as hdul:
 
@@ -91,14 +88,13 @@ class Subscan:
 
             # maschera del flag track che, applicata ai dati, nasconde rampe di accelerazione e decelerazione
             # altrimenti prendo tutto il subscan
-            flag_track_mask = ft.astype(bool) if flag_track else np.ones(len(ft), dtype=bool)
+            flag_track_mask = ft.astype(bool) if flag_track_ else np.ones(len(ft), dtype=bool)
 
             ra_center = hdul['PRIMARY'].header['HIERARCH RightAscension']
             dec_center = hdul['PRIMARY'].header['HIERARCH Declination']
 
             # quanti detector ho (non ch) - l'esclusione dei detector non buoni avviene in beam_map.py
             num_feed = len(hdul[ph_table].data[0])
-
 
             hdul_data = hdul[data_table]
 
@@ -118,23 +114,37 @@ class Subscan:
                 mask &= ~np.isnan(array)
 
             ra = arrays[0][mask]
-            dec =  arrays[1][mask]
-            az =  arrays[2][mask]
-            el =  arrays[3][mask]
-            par_angle =  arrays[4][mask]
-            time_ =  arrays[5][mask]
+            dec = arrays[1][mask]
+            az = arrays[2][mask]
+            el = arrays[3][mask]
+            par_angle = arrays[4][mask]
+            time_ = arrays[5][mask]
 
             # creo le stringhe channel basandomi sui kid
             hdr = ["chp_" + str(i).zfill(3) for i in range(num_feed)]
 
-            beammap = BeamMap.from_dat(beammap_filename, valid_kids=True)
+            # costruisco beammap a partire da file fits se non viene passato un file beammap.dat
+            if isinstance(beammap_filename, Path):
+                if not beammap_filename.exists():
+
+                    print(f"Beammap file {beammap_filename} not found. Using xOffset and yOffset from fits file.")
+
+                    xOffset = np.deg2rad(hdul['FEED TABLE'].data['xOffset'])
+                    yOffset = np.deg2rad(hdul['FEED TABLE'].data['yOffset'])
+                    beammap = BeamMap.from_fits_cols(lon_offset=xOffset, lat_offset=yOffset)
+
+                else:
+                    beammap = BeamMap.from_dat(beammap_filename,
+                                               frame=binner_frame,
+                                               par_angle=par_angle,
+                                               valid_kids=True)
+
             kids = []
 
             # named tuples sono tuple che emulano oggetti per cui accedo ai loro elementi con l'operatore '.'
             for row in beammap.beam_map.itertuples():
-
                 kids.append(
-                    KID(id=row.Index, # indice riga beammap
+                    KID(id=row.Index,  # indice riga beammap
                         pos=Position(row.lon_offset, row.lat_offset),
                         quality_factor=-1,
                         electrical_responsivity=-1,
@@ -142,11 +152,12 @@ class Subscan:
                         gain=-1,
                         saturation_up=-1,
                         saturation_down=-1,
-                        ch=row.Index, # avendo tolto gia' i KID non validi con beammap, qui channel e' uguale a id kid
+                        ch=row.Index,  # avendo tolto gia' i KID non validi con beammap, qui channel e' uguale a id kid
                         resonance_freq_hz=-1,
                         sweep_amplitude=np.array([]),
                         sweep_phase=np.array([]),
-                        tod=hdul[ph_table].data[hdr[row.Index]][mask]) # prendo TOD senza nan corrispondenti a ra, dec, ...
+                        tod=hdul[ph_table].data[hdr[row.Index]][mask],
+                        validity=detector_validity)  # prendo TOD senza nan corrispondenti a ra, dec, ...
                 )
 
             # timestream_raw = []
@@ -176,21 +187,39 @@ class Subscan:
                        kids)
 
     # calibration sara' l'oggetto istanziato dalla classe Calibration (modificare skydipcalibration.py)
-    def process(self, projection: str, frame: str, calibration: Calibration, radius: Optional[u.deg]):
+    def process(self, projection: BinnerProjection, frame: BinnerFrame, calibration: Calibration, radius: Optional[u.arcsec]):
 
-        # x, y = proj_radec_to_xy(self.ra, self.dec, self.ra_center, self.dec_center, projection)
-        # lon, lat = conv_xy_to_latlon(x, y,
-        #                              self.par_angle,
-        #                              self.num_feed,
-        #                              self.az,
-        #                              self.el,
-        #                              self.ra_center,
-        #                              self.dec_center,
-        #                              frame)
+        x, y = proj_radec_to_xy(self.ra, self.dec, self.ra_center, self.dec_center, projection)
+        lon, lat = conv_xy_to_latlon(x, y,
+                                     self.par_angle,
+                                     self.az,
+                                     self.el,
+                                     self.ra_center,
+                                     self.dec_center,
+                                     frame)
 
         tods_calibrated = calibration.calibrate(self.kids)
 
+        for kid, tod in zip(self.kids, tods_calibrated):
+            # associo ai kid le tod calibrate
+            kid.tod = tod
 
+        if radius:
+            # da arcsec a rad
+            radius = radius.to(u.rad).value
+            dist_from_center = np.sqrt((lon - self.ra_center) ** 2 + (lat - self.dec_center) ** 2)
+            mask = dist_from_center <= radius
+
+            for kid in self.kids:
+                kid.mask = mask
+
+            # remove baseline
+            tods = np.vstack([k.tod for k in self.kids])
+            remove_baseline(self.time, tods, )
+            # custom common mode
+
+        # linear_detrend
+        # custom common mode
 
 @dataclass
 class Scan:
@@ -223,7 +252,9 @@ class SubscanPayload:
     flag_track: bool
     subscan_filename: Path
     beammap_filename: Path
-
+    detector_validity: DetectorValidityConfig
+    binner_frame: BinnerFrame = BinnerFrame.AZEL
+    angle_offset: float = 0
 
     # aprire file subscan con mirtos.io.fits.load_subscan_fits
 
@@ -238,12 +269,12 @@ class SubscanPayload:
 # deve estrarre dall'hdul tutte le informazioni necessarie in quanto portarsi dietro tutto l'hdul e' pesante.
 # se ci sono informazioni che devono essere salvate si crea l'attributo relativo e ci si salvano i dati dentro
 def process_subscan_file(job: SubscanPayload) -> Subscan:
-
     # in questo modo accedo alle tod dei KIDS VALIDI in quanto valid_kids e' True
     # for i in range(len(subscan.kids)):
     #     subscan.kids[i].tod
 
-    return Subscan.from_discos_fits(job.subscan_filename, job.beammap_filename, flag_track=job.flag_track)
+    return Subscan.from_discos_fits(job.subscan_filename, job.detector_validity, job.beammap_filename,
+                                    flag_track_=job.flag_track)
 
 
 if __name__ == "__main__":
@@ -254,7 +285,10 @@ if __name__ == "__main__":
     beam_map = Path('/Volumes/Data/PycharmProjects/mirtos/metadata/chp_offset_rel8_14DEC24_matteo.dat')
     skydip_path = Path('/Volumes/Data/PycharmProjects/mirtos/skydip/skydip_calibration.dat')
 
-    subscan = Subscan.from_discos_fits(subscan_fit, beam_map, flag_track = True)
+    subscan = Subscan.from_discos_fits(subscan_fit,
+                                       detector_validity=DetectorValidityConfig(),
+                                       beammap_filename=beam_map,
+                                       flag_track_=True)
 
     # config = load_config(config_path)
     # flag_track = config.flag_track
@@ -262,14 +296,11 @@ if __name__ == "__main__":
     job_ids = []
     # scorrere sugli id che per noi sono le due triplette finali
     for file in scan_dir.iterdir():
-
         # 'dirfile_20240611_124429__MERGED_WITH__20240611-124423-MISTRAL-JUPITER_FOCUS_SCAN_001_108' il suo id e' 001_108
         job_ids.append(file.stem.split("_")[-1])
 
-
-    jobs = [Job(job_id, SubscanPayload(flag_track, file, beam_map))
+    jobs = [Job(job_id, SubscanPayload(flag_track, file, beam_map, DetectorValidityConfig()))
             for job_id, file in zip(job_ids, scan_dir.iterdir()) if file.suffix == '.fits']
-
 
     # lista di oggetti Result che conterranno job, output, error
     res = process_all(jobs, process_subscan_file)
@@ -285,5 +316,3 @@ if __name__ == "__main__":
     # subscans = process_all_subscans(jobs)
     #
     # pprint(subscans)
-
-
