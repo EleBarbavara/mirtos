@@ -13,7 +13,7 @@ from mirtos.core.types.focal_plane import KID
 class Calibration(ABC):
     responsivities: np.ndarray
 
-    def calibrate(self, kids: Union[KID, Iterable[KID]]):
+    def calibrate(self, kids: Union[KID, Iterable[KID]], inplace: bool = False):
         ...
 
 
@@ -26,27 +26,30 @@ class SkyDipCalibration(Calibration):
     z: np.ndarray = field(default_factory=lambda: np.array([]))
     airmass: np.ndarray = field(default_factory=lambda: np.array([]))
 
-    def calibrate(self, kids: Union[KID, Iterable[KID]]):
-        """
-        gli possiamo passare un KID o un insieme di KID
-        """
+    def calibrate(self, kids: Union[KID, Iterable[KID]], inplace: bool = False):
         # istruzioni per calibrare le TOD con lo skydip
 
-        # se e' un KID
         if isinstance(kids, KID):
             denom = self.responsivities[kids.id] * np.exp(- self.tau_atm / np.cos(self.z - kids.pos.y))
+            if inplace:
+                kids.tod /= denom
+                return None
 
-            # array TOD calibrato
             return kids.tod / denom
 
-        # altrimenti estriamo le info di tutti gli oggetti KID
         tods = np.vstack([k.tod for k in kids])
         ys = np.array([k.pos.y for k in kids])
         resps = np.array([self.responsivities[k.id] for k in kids])
 
         denom = resps[:, None] * np.exp(- self.tau_atm / np.cos(self.z[None, :] - ys[:, None]))
 
-        # matrice di TOD calibrate
+        if inplace:
+            tods /= denom
+            for kid, tod in zip(kids, tods):
+                # associo ai kid le tod calibrate
+                kid.tod = tod
+            return None
+
         return tods / denom
 
     @classmethod
@@ -78,7 +81,7 @@ class SkyDipCalibration(Calibration):
 
 
 @dataclass
-class NoiseCalibration(Calibration):
+class GainCalibration(Calibration):
 
     sample_freq: float
     hf_min_freq: float = 60
@@ -95,12 +98,19 @@ class NoiseCalibration(Calibration):
 
         return gains, mean_noise_tot, hfn_feeds
 
-    def calibrate(self, kids: Union[KID, Iterable[KID]]):
+    def calibrate(self, kids: Union[KID, Iterable[KID]], inplace: bool = False):
 
         if isinstance(kids, KID):
-            raise NotImplementedError("Come calibro una singola tod quando si usa noise calibration?")
+            raise NotImplementedError("Come calibro una singola tod quando si usa gain calibration?")
 
         tods = np.vstack([k.tod for k in kids])
         gains, _, _ = self._compute_gain(tods)
+
+        if inplace:
+            tods *= gains[:, None]
+            for kid, tod in zip(kids, tods):
+                # associo ai kid le tod calibrate
+                kid.tod = tod
+            return None
 
         return tods * gains[:, None]

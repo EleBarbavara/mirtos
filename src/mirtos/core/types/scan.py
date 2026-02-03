@@ -205,11 +205,15 @@ class Subscan:
                                      self.dec_center,
                                      frame)
 
-        tods_calibrated = calibration.calibrate(self.kids)
+        # se inplace = False
+        # tods_calibrated = calibration.calibrate(self.kids)
+        #
+        # for kid, tod in zip(self.kids, tods_calibrated):
+        #     # associo ai kid le tod calibrate
+        #     kid.tod = tod
 
-        for kid, tod in zip(self.kids, tods_calibrated):
-            # associo ai kid le tod calibrate
-            kid.tod = tod
+        # se inplace = True, ritorna direttamente la lista di tod calibrate
+        calibration.calibrate(self.kids, inplace=True)
 
         tods = np.vstack([k.tod for k in self.kids])
         mask_type = "mask_without_radius"
