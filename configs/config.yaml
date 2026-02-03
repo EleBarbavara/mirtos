@@ -34,7 +34,7 @@ binner:
 
 filtering:
   #info of box around source to mask during baseline removal and filtering
-  radius: 0 #arcsec
+  radius: '0 arcsec' #arcsec
 #  baseline_rem: 'cutted'
 #  #If True, the detrended TODs are filtered, or else the raw TODs
 #  use_detrend_tods: True
@@ -50,36 +50,46 @@ filtering:
     plot_cm: False
     plot_corr_matrix: False
 
+  # per creare la maschera
+  mask_without_radius:
+    mode: 'cutted'
+    offset: 0.1
+    sigma: 6
+    maxiters: 10
+
+
   steps:
-    - op: lowpass_filter # il trattino serve per creare la lista steps che dentro contiene una lista per ogni operazione [lowpass_filter, arguments]
-      params:
-        btype: 'lowpass'
-        cutoff_freq: 60
-        butter_order: 4
 
-    - op: bandpass_filter
-      params:
-        btype: 'bandpass'
-        cuton_freq: 0
-        cutoff_freq: 60
-        butter_order: 4
+    common:
+      - op: remove_common_mode
+        params:
+          use_correlation_matrix: False
+          return_common_mode: False
 
+      - op: lowpass_filter # il trattino serve per creare la lista steps che dentro contiene una lista per ogni operazione [lowpass_filter, arguments]
+        params:
+          btype: 'lowpass'
+          cutoff_freq: 60
+          butter_order: 4
 
-    - op: remove_baseline
-      params:
-        baseline_poly_deg: 4
+      - op: bandpass_filter
+        params:
+          btype: 'bandpass'
+          cuton_freq: 0
+          cutoff_freq: 60
+          butter_order: 4
 
-    - op: remove_common_mode
-      params:
-        use_correlation_matrix: False
-        return_common_mode: False
+    mask_with_radius:
 
-    - op: linear_detrend
-      params:
-        mode: 'cutted'
-        offset: 0.1
-        sigma: 6
-        maxiters: 10
+      - op: remove_baseline
+        params:
+          baseline_poly_deg: 4
+
+    mask_without_radius:
+
+      - op: linear_detrend
+        params: {}
+
 
 
 

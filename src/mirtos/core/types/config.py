@@ -3,8 +3,11 @@ from enum import Enum
 import yaml
 import dacite
 from pathlib import Path
+from astropy import units as u
 from dataclasses import dataclass
 from typing import Optional, Union, Any
+
+from mirtos.core.types.filters import FilteringConfig, MaskWithoutRadiusMode
 
 
 @dataclass
@@ -41,38 +44,6 @@ class BinnerConfig:
     projection: BinnerProjection  # e.g. 'SIN' or 'GNOM'
     frame: BinnerFrame  # e.g. 'AZEL', 'RADEC', 'EQ'
 
-
-class LinearDetrendMode(Enum):
-    CUTTED = 'cutted'
-    SIGMA = 'sigma'
-    NONE = 'none'
-
-@dataclass(frozen=True)
-class Step:
-    """
-    dataclasse che contiene le informazioni che stanno sotto la chiave steps di config.yaml
-    """
-    op: str
-    params: dict[str, Any]
-
-
-@dataclass(frozen=True)
-class FilteringDebug:
-    plot_cm: bool
-    plot_corr_matrix: bool
-
-
-@dataclass(frozen=True)
-class FilteringConfig:
-    """Configuration for TOD filtering and baseline removal."""
-    radius: Union[float, bool]  # in arcsec, or False if not used
-    steps: list[Step]  # lista di filtri da applicare
-    debug: FilteringDebug
-
-    def __post_init__(self):
-        for step in self.steps:
-            if step.op == "linear_detrend":
-                step.params["mode"] = LinearDetrendMode[step.params["mode"].upper()]
 
 
 @dataclass
@@ -123,9 +94,16 @@ def load_config(path: Path) -> Config:
     """Load a YAML configuration file into a typed Config object."""
     data = yaml.safe_load(path.read_text())
 
+    # intermediari per convertire tutti i tipi di input in tipi di output
+    # EX: se come dato din input nello yaml gli passo una stringa (radius: "5 arcmin")
+    # ma nella dataclass FilteringConfig gli dico che mi aspetto che radius sia di tipo un u.Quantity,
+    # raccordo queste due informazioni sui tipi con i type_hooks che fungono da intermediari per convertire
+    # tutti i tipi di input nei corretti tipi di output
     type_hooks = {
         BinnerProjection: BinnerProjection,
-        BinnerFrame: BinnerFrame
+        BinnerFrame: BinnerFrame,
+        u.Quantity: u.Quantity,
+        MaskWithoutRadiusMode: lambda s: MaskWithoutRadiusMode[s.upper()]
     }
 
     return dacite.from_dict(Config, data, config=dacite.Config(type_hooks=type_hooks))
@@ -135,4 +113,4 @@ if __name__ == "__main__":
     config_path = Path(__file__).parents[4] / 'configs' / 'config.yaml'
     config = load_config(config_path.expanduser().resolve())
     print(config)
-    print(config.filtering.steps)
+    print(config.filtering.mask_without_radius)

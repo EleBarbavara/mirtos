@@ -2,6 +2,9 @@
 name = "mirtos"
 version = "0.1.0"
 description = ""
+packages = [
+    {include = "mirtos", from = "src"} # primo parent e' mirtos
+]
 authors = [
     {name = "sofiaferazzoli",email = "sofiaferazzoli@gmail.com"}
 ]

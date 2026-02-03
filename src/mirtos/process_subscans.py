@@ -112,7 +112,7 @@ def process_subscan(filename, subscan, cfg):
             for i in range(len(subscan_table_raw)):
                 if mask[i] is True:
                     # sta mettendo tutta la colonna tod_raw a nan
-                    subscan_masked['tod_raw'] = np.nan
+                    subscan_masked['tod_raw'][i] = np.nan
             
             tsdt_rb = []
             for ch in range(subscan.num_feed): 

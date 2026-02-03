@@ -10,11 +10,12 @@ from typing import Optional
 from mirtos.calibration.calibration import Calibration, SkyDipCalibration
 from mirtos.core.projections import proj_radec_to_xy, conv_xy_to_latlon
 from mirtos.core.types.beam_map import BeamMap
-from mirtos.core.types.config import load_config, DetectorValidityConfig, BinnerFrame, BinnerProjection
+from mirtos.core.types.config import load_config, DetectorValidityConfig, BinnerFrame, BinnerProjection, FilteringSteps
+from mirtos.core.types.filters import MaskWithoutRadius
 from mirtos.core.types.focal_plane import KID, Position
 from mirtos.core.multipreprocess import process_all, Job
 
-from mirtos.filtering.filters import remove_baseline
+from mirtos.filtering.filters import remove_baseline, linear_detrend, run_filter_steps, get_without_radius_mask
 
 
 @dataclass
@@ -187,7 +188,13 @@ class Subscan:
                        kids)
 
     # calibration sara' l'oggetto istanziato dalla classe Calibration (modificare skydipcalibration.py)
-    def process(self, projection: BinnerProjection, frame: BinnerFrame, calibration: Calibration, radius: Optional[u.arcsec]):
+    def process(self,
+                projection: BinnerProjection,
+                frame: BinnerFrame,
+                calibration: Calibration,
+                radius: Optional[u.arcsec],
+                steps: FilteringSteps,
+                mask_without_radius: Optional[MaskWithoutRadius]):
 
         x, y = proj_radec_to_xy(self.ra, self.dec, self.ra_center, self.dec_center, projection)
         lon, lat = conv_xy_to_latlon(x, y,
@@ -204,22 +211,35 @@ class Subscan:
             # associo ai kid le tod calibrate
             kid.tod = tod
 
+        tods = np.vstack([k.tod for k in self.kids])
+        mask_type = "mask_without_radius"
+
         if radius:
+            mask_type = "mask_with_radius"
             # da arcsec a rad
             radius = radius.to(u.rad).value
             dist_from_center = np.sqrt((lon - self.ra_center) ** 2 + (lat - self.dec_center) ** 2)
             mask = dist_from_center <= radius
 
-            for kid in self.kids:
-                kid.mask = mask
+        else:
+            # calcolo la maschera senza avere il raggio definito nello yaml
+            mask = get_without_radius_mask(tods, mask_without_radius)
 
-            # remove baseline
-            tods = np.vstack([k.tod for k in self.kids])
-            remove_baseline(self.time, tods, )
-            # custom common mode
+        # definisco la lista dei filtri specifici e di quelli common
+        # il cui ordine di esecuzione e' quello dello yaml.
+        # se mask_type = mask_without_radius, come primo step di filtraggio faccio il linear_detrend
+        # se mask_type = mask_with_radius, come primo step di filtraggio faccio il remove_baseline
+        filters = getattr(steps, mask_type) + steps.common
+        # filtro le tod mascherate, a prescindere che siano mascherate
+        # con o senza raggio
+        tods = run_filter_steps(self.time, tods[:, mask], filters)
 
-        # linear_detrend
-        # custom common mode
+        # aggiorno la maschera e la tod per ogni kid
+        for kid, tod in zip(self.kids, tods):
+            kid.mask, kid.tod = mask, tod
+
+
+
 
 @dataclass
 class Scan:
@@ -289,6 +309,8 @@ if __name__ == "__main__":
                                        detector_validity=DetectorValidityConfig(),
                                        beammap_filename=beam_map,
                                        flag_track_=True)
+
+    # subscan.process(, steps=)
 
     # config = load_config(config_path)
     # flag_track = config.flag_track

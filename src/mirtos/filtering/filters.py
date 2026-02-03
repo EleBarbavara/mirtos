@@ -10,6 +10,7 @@ from numpy.polynomial.polynomial import Polynomial
 from scipy.signal import butter, sosfiltfilt
 
 from mirtos.core.types.config import Step, LinearDetrendMode
+from mirtos.core.types.filters import MaskWithoutRadius, MaskWithoutRadiusMode
 
 # callable indica che filter_fn e' di tipo funzione
 # np.ndarray: tod da filtrare
@@ -31,6 +32,25 @@ def register(name: str):
         return fn
 
     return register_fn
+
+def get_without_radius_mask(tods: np.ndarray, params: MaskWithoutRadius):
+
+    # per gestire il caso “None” (deterend non applicato) e un caso non programmato di default (no cutted o sigma)
+    # allo stesso modo nel costrutto del match case, si usa questa sintassi
+    mask = np.zeros(len(tods), dtype=bool)
+
+    if params.mode == MaskWithoutRadiusMode.CUTTED:
+
+        offset = int(len(tods) * params.offset)
+        mask[offset:-offset] = True
+
+    # per gestire il caso “None” e il caso generico allo stesso modo nel costrutto del match case, si usa questa sintassi:
+    elif params.mode == MaskWithoutRadiusMode.SIGMA:
+
+        # false: valori al di sopra della sigma, true: valori al di sotto della sigma
+        mask = ~sigma_clip(tods, sigma=params.sigma, maxiters=params.maxiters).mask
+
+    return mask
 
 
 def remove_polynomial_fit(time_: np.ndarray, tods: np.ndarray, deg: int):
@@ -64,40 +84,16 @@ def remove_polynomial_fit(time_: np.ndarray, tods: np.ndarray, deg: int):
 def linear_detrend(time_: np.ndarray, tods: np.ndarray, filter_params: dict[str, Any]):
 
     """
-    a linear_detrend facciamo calcolare la maschera da applicare alla TOD (e' il caso in cui non
+    a linear_detrend gli passiamo gia' le TOD  mascherate(e' il caso in cui non
     viene dato il raggio dal config.yaml) e ritorniamo la TOD mascherata e la maschera
     """
 
     # time_ ha dim N (samples)
     # tods ha dim num_feed x N
 
-
-    if filter_params["mode"].value == 'cutted':
-
-        offset = int(len(tods) * filter_params["offset"])
-        mask = np.zeros(len(tods), dtype=bool)
-        mask[offset:-offset] = True
-
-    # per gestire il caso “None” e il caso generico allo stesso modo nel costrutto del match case, si usa questa sintassi:
-    elif filter_params["mode"].value == 'sigma':
-
-        # false: valori al di sopra della sigma, true: valori al di sotto della sigma
-        mask = ~sigma_clip(tods, sigma=filter_params["sigma"], maxiters=filter_params["maxiters"]).mask
-
-
-    # per gestire il caso “None” (deterend non applicato) e un caso non programmato di default (no cutted o sigma)
-    # allo stesso modo nel costrutto del match case, si usa questa sintassi
-    else:
-
-        return tods, np.zeros(len(tods), dtype=bool)
-
-    time_fit = time_[mask]
-    tods_fit = tods[:, mask].T
-
-
     # a polynomial passo la mtrice tods traposta, ma tods e' non trasposta
     # quindi traspondo p(time_)
-    return remove_polynomial_fit(time_fit, tods_fit, 1), mask
+    return tods - remove_polynomial_fit(time_, tods.T, 1)
 
 
 @register('remove_baseline')
