@@ -60,6 +60,17 @@ filtering:
 
   steps:
 
+    mask_with_radius:
+
+      - op: remove_baseline
+        params:
+          baseline_poly_deg: 4
+
+    mask_without_radius:
+
+      - op: linear_detrend
+        params: { }
+
     common:
       - op: remove_common_mode
         params:
@@ -78,20 +89,6 @@ filtering:
           cuton_freq: 0
           cutoff_freq: 60
           butter_order: 4
-
-    mask_with_radius:
-
-      - op: remove_baseline
-        params:
-          baseline_poly_deg: 4
-
-    mask_without_radius:
-
-      - op: linear_detrend
-        params: {}
-
-
-
 
 unfilt_map: 'dt' #'raw'=TODs raw are used or 'dt'=TODs detrended are used
 
