@@ -309,12 +309,11 @@ if __name__ == "__main__":
     beam_map = Path('/Volumes/Data/PycharmProjects/mirtos/metadata/chp_offset_rel8_14DEC24_matteo.dat')
     skydip_path = Path('/Volumes/Data/PycharmProjects/mirtos/skydip/skydip_calibration.dat')
 
-    subscan = Subscan.from_discos_fits(subscan_fit,
-                                       detector_validity=DetectorValidityConfig(),
-                                       beammap_filename=beam_map,
-                                       flag_track_=True)
-
-    # subscan.process(, steps=)
+    # test lettura singolo file
+    # subscan = Subscan.from_discos_fits(subscan_fit,
+    #                                    detector_validity=DetectorValidityConfig(),
+    #                                    beammap_filename=beam_map,
+    #                                    flag_track_=True)
 
     # config = load_config(config_path)
     # flag_track = config.flag_track
@@ -337,7 +336,12 @@ if __name__ == "__main__":
     tau = config.paths.tau
     T_atm = config.paths.T_atm
     skydipcalibration = SkyDipCalibration.from_fits_file(skydip_path, T_atm, tau)
-    subscan.process('ITRF', 'ITRF', skydipcalibration, radius=None)
+    subscan.process(BinnerProjection.SIN,
+                    BinnerFrame.AZEL,
+                    skydipcalibration,
+                    config.filtering.radius,
+                    config.filtering.steps,
+                    config.filtering.mask_without_radius)
 
     # subscans = process_all_subscans(jobs)
     #
