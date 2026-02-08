@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from mirtos.core.projections import rot
 from mirtos.io.dat import read_dat
-from mirtos.core.types.config import BinnerFrame
+from mirtos.core.types.config import MapMakingFrame
 
 
 @dataclass
@@ -26,7 +26,7 @@ class BeamMap:
     def from_dat(cls, filename: Path,
                  comments: str = '#',
                  valid_kids: bool = False,
-                 frame: BinnerFrame = BinnerFrame.AZEL,
+                 frame: MapMakingFrame = MapMakingFrame.AZEL,
                  par_angle: np.ndarray = np.array([]),
                  dataframe_columns=('id', 'lon_offset', 'lat_offset', 'Tcal pol1', 'Tcal pol2', 'flag')):
 
@@ -43,7 +43,7 @@ class BeamMap:
         df['lon_offset'] = np.deg2rad(df['lon_offset'])
         df['lat_offset'] = np.deg2rad(df['lat_offset'])
 
-        if frame == BinnerFrame.RADEC:
+        if frame == MapMakingFrame.RADEC:
             df['lon_offset'], df['lat_offset'] = rot(df['lon_offset'], df['lat_offset'], par_angle)
 
         # se valid_kids e' True ritorno il dataframe con i kid funzionanti (tolgo le righe dei kid non funzionanti,

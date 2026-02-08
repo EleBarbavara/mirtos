@@ -3,13 +3,15 @@ import dacite
 from pathlib import Path
 import astropy.units as u
 
+
 def to_yaml(file_path: Path):
     ...
 
-def read_yaml(file_path: Path):
 
+def read_yaml(file_path: Path):
     with open(file_path, 'r') as file:
         return yaml.safe_load(file)
+
 
 # funzione generica che utilizziamo nelle dataclasses per non ripetere lo stesso codice
 def from_yaml(cls, filename: Path):
@@ -28,9 +30,7 @@ def from_yaml(cls, filename: Path):
         An instance of the class (cls) populated with data from the YAML file.
     """
 
-
     cfg = read_yaml(filename)
-
 
     # dacite.Config(cast=[u.Quantity], dato un attributo della dataclass del tipo u.Quantity
     # dacite richiama il costruttore u.Quantity sul valore letto nel file yaml associato all'attributo

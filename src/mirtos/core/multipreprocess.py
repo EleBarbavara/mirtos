@@ -69,7 +69,7 @@ def process_all(
     - max_workers: numero processi (None => default)
     - return_in_completion_order:
         True  -> risultati nell'ordine di completamento (più veloce)
-        False -> risultati nell'ordine di input (piu' stabile)
+        False -> risultati nell'ordine di expected (piu' stabile)
     - tb_limit: profondità traceback negli errori
     """
     jobs_list = list(jobs)
@@ -80,7 +80,7 @@ def process_all(
         if return_in_completion_order:
             return [f.result() for f in as_completed(futures)]
 
-        # ordine input: mappa future -> index
+        # ordine expected: mappa future -> index
         future_to_idx = {f: i for i, f in enumerate(futures)}
         results: list[Optional[Result[PayloadType, OutputType]]] = [None] * len(futures)
 

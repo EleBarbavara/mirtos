@@ -25,7 +25,7 @@ class Detector(ABC):
     # se init fosse True, l'attributo verrebbe creato quando istanzio la classe
     # ma questo genererebbe un problema quando la classe KID eredita Detector
     # perche' all'inizio della classe KID ho attributi obbligatori
-    mask: np.ndarray = field(init=False, default_factory=lambda: np.array([])) # opzionale
+    mask: np.ndarray = field(init=False, default_factory=lambda: np.array([]))  # opzionale
 
     def __post_init__(self):
         # se non e' stato passata alcuna maschera, la creo con tutti i valori False
@@ -37,6 +37,10 @@ class Detector(ABC):
     @abstractmethod
     def is_valid(self):
         ...
+
+    @property
+    def calibrated_tod(self):
+        return self.tod / self.gain
 
 
 @dataclass

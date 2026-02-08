@@ -2,35 +2,41 @@ name_target: 'JUPITER'
 date_obs: "20241214" #vedere nome cartella file
 
 telescope: 'SRT'
-pixel_size: 60 #arcsec
 num_ch_map: 'all' #numero di canali con cui fare la mappa. Se si vogliono tutti i pixel, scrivere 'all'
 
 paths: #NB: NON METTERE SLASH FINALE SUL PATH!!!!!!!
   instrumentation: 'configs/instrument/telescope/SRT.yaml'
   # Location of TOD files
-  # TODO: rendere lista (futuro: leggere piu' scan)
   tods: "data/input/20250402-212049-MISTRAL-A1995_RA_001_002.fits"
   #File of the channels' responsivity
-  resp: False #'/home/eleobar/MISTRAL_gen+map-maker/optical_responsivity_new_lowSNR_200mK.pkl'
+  resp:  #'/home/eleobar/MISTRAL_gen+map-maker/optical_responsivity_new_lowSNR_200mK.pkl'
   #File of the channels' offsets
-  offset_det: 'metadata/chp_offset_rel8_14DEC24_matteo.dat' #/Users/eleonora/Desktop/mirtos/mirtos_multiprocess/feed_offsets_relchp8_02may25.dat
   #'/Users/eleonora/Desktop/mirtos/FOCUS/pixel_offsets_AZ_01SEP24_matteo.dat'
   # gli va passato False e non None perche' interpreta None come una stringa. noi convertiamo le
   # stringhe con Path e quindi si bugga
-  skydip: False #'/Users/eleonora/Desktop/SRT-marzo/20250404-164449-MISTRAL-GAIN_CAL/20250404-164449-MISTRAL-GAIN_CAL_005_001.fits'
+
+
+scan:
+  flag_track: True
+  beammap_filename: 'metadata/chp_offset_rel8_14DEC24_matteo.dat' #/Users/eleonora/Desktop/mirtos/mirtos_multiprocess/feed_offsets_relchp8_02may25.dat
+  angle_offset: 0
+  projection: 'SIN' #'SIN', 'GNOM', "EQ"
+  frame: 'AZEL' # 'AZEL' oppure 'RADEC'
+
+  detector_validity:
+    upper_threshold: 7
+    lower_threshold: 7
+
+map_making:
+  pixel_size: 60 arcsec
+  npix: [128, 128] # x, y
+
+calibration:
   tau: 0.16
   T_atm: 267
-
-flag_track: True
-
-detector_validity:
-  upper_threshold: 7
-  lower_threshold: 7
-
-
-binner:
-  projection: 'SIN' #'SIN' oppure 'GNOM'
-  frame: 'AZEL' # 'AZEL' oppure 'RADEC'
+  type: 'SKYDIP' # or hf
+  path: "data/input/20250402-222030-MISTRAL-GAIN_CAL/20250402-222030-MISTRAL-GAIN_CAL_003_001.fits"
+  # TODO: INSIRE ANCHE OPZIONE CON PARAMETRI DI GAIN CALIBRATION
 
 filtering:
   #info of box around source to mask during baseline removal and filtering
@@ -77,18 +83,18 @@ filtering:
           use_correlation_matrix: False
           return_common_mode: False
 
-      - op: lowpass_filter # il trattino serve per creare la lista steps che dentro contiene una lista per ogni operazione [lowpass_filter, arguments]
-        params:
-          btype: 'lowpass'
-          cutoff_freq: 60
-          butter_order: 4
-
-      - op: bandpass_filter
-        params:
-          btype: 'bandpass'
-          cuton_freq: 0
-          cutoff_freq: 60
-          butter_order: 4
+#      - op: lowpass_filter # il trattino serve per creare la lista steps che dentro contiene una lista per ogni operazione [lowpass_filter, arguments]
+#        params:
+#          btype: 'lowpass'
+#          cutoff_freq: 60
+#          butter_order: 4
+#
+#      - op: bandpass_filter
+#        params:
+#          btype: 'bandpass'
+#          cuton_freq: 0
+#          cutoff_freq: 60
+#          butter_order: 4
 
 unfilt_map: 'dt' #'raw'=TODs raw are used or 'dt'=TODs detrended are used
 

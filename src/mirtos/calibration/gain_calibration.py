@@ -1,4 +1,4 @@
-from skydipcalibration import SkydipCalibration
+from .calibration import SkydipCalibration
 import numpy as np
 import statistics
 import scipy

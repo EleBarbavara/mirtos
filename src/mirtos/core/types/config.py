@@ -5,7 +5,7 @@ import dacite
 from pathlib import Path
 from astropy import units as u
 from dataclasses import dataclass
-from typing import Optional, Union, Any
+from typing import Optional, Union, Any, Iterable
 
 from mirtos.core.types.filters import FilteringConfig, MaskWithoutRadiusMode
 
@@ -13,13 +13,9 @@ from mirtos.core.types.filters import FilteringConfig, MaskWithoutRadiusMode
 @dataclass
 class PathsConfig:
     """Paths to expected and calibration files used by the pipeline."""
-    instrumentation: str
-    tods: str
-    resp: Union[str, bool]
-    offset_det: Optional[str]
-    skydip: Union[str, bool]
-    tau: float
-    T_atm: float
+    instrumentation: Path
+    tods: Path
+    resp: Union[Path, None]
 
 
 @dataclass(frozen=True)
@@ -28,25 +24,50 @@ class DetectorValidityConfig:
     lower_threshold: float = 7
 
 
-class BinnerProjection(Enum):
+class CalibrationType(Enum):
+    SKYDIP = 'SKYDIP'
+    HF = 'HF'
+    NONE = 'NONE'
+
+
+@dataclass(frozen=True)
+class CalibrationConfig:
+    tau: float
+    T_atm: float
+    type: CalibrationType
+    path: Path
+
+
+class MapMakingProjection(Enum):
     SIN = 'SIN'
     GNOM = 'GNOM'
 
 
-class BinnerFrame(Enum):
+class MapMakingFrame(Enum):
     AZEL = 'AZEL'
     RADEC = 'RADEC'
 
 
 @dataclass(frozen=True)
-class BinnerConfig:
-    """Configuration of the map binning """
-    projection: BinnerProjection  # e.g. 'SIN' or 'GNOM'
-    frame: BinnerFrame  # e.g. 'AZEL', 'RADEC', 'EQ'
-
+class MapMakingConfig:
+    """Configuration of the map making """
+    pixel_size: u.Quantity
+    npix: list[int]
 
 
 @dataclass
+class ScanContext:
+    frame: MapMakingFrame
+    projection: MapMakingProjection
+    beammap_filename: Path
+    detector_validity: DetectorValidityConfig
+    flag_track: bool = False
+    ra_center: float = 0.0
+    dec_center: float = 0.0
+    angle_offset: float = 0.0
+
+
+@dataclass(frozen=True)
 class PlotMapsConfig:
     """Flags that control which maps are plotted."""
     plot_filt: bool
@@ -61,33 +82,16 @@ class Config:
     name_target: str
     date_obs: str
     telescope: str
-    pixel_size: float
     num_ch_map: Union[str, int]
     paths: PathsConfig
-    flag_track: bool
-    binner: BinnerConfig
+    map_making: MapMakingConfig
     filtering: FilteringConfig
     unfilt_map: str
     plot_maps: PlotMapsConfig
     save_map: bool
     save_single_pixel_maps: bool
-    detector_validity: DetectorValidityConfig
-
-    def __post_init__(self):
-        base_path = Path(__file__).parents[4]
-
-        for field in (
-                "instrumentation",
-                "tods",
-                "resp",
-                "offset_det",
-                "skydip"):
-
-            value = getattr(self.paths, field)
-
-            if isinstance(value, str):
-                setattr(self.paths, field, (base_path / value).expanduser().resolve())
-                assert getattr(self.paths, field).exists(), f"{field} does not exist: {getattr(self.paths, field)}"
+    scan: ScanContext
+    calibration: CalibrationConfig
 
 
 def load_config(path: Path) -> Config:
@@ -100,10 +104,15 @@ def load_config(path: Path) -> Config:
     # raccordo queste due informazioni sui tipi con i type_hooks che fungono da intermediari per convertire
     # tutti i tipi di input nei corretti tipi di output
     type_hooks = {
-        BinnerProjection: BinnerProjection,
-        BinnerFrame: BinnerFrame,
+        MapMakingProjection: MapMakingProjection,
+        MapMakingFrame: MapMakingFrame,
         u.Quantity: u.Quantity,
-        MaskWithoutRadiusMode: lambda s: MaskWithoutRadiusMode[s.upper()]
+        MaskWithoutRadiusMode: lambda s: MaskWithoutRadiusMode[s.upper()],
+        # se non passo nulla a path nel file config, gli viene assegnato None.
+        # None deve essere prima convertito in stringa (str(None)) e poi messo in upper case
+        # cosi da essere riconosciuto nella classe enum CalibrationType
+        CalibrationType: lambda s: CalibrationType[str(s).upper()],
+        Path: lambda p: Path(__file__).parents[4] / p if isinstance(p, str) else p,
     }
 
     return dacite.from_dict(Config, data, config=dacite.Config(type_hooks=type_hooks))
@@ -112,5 +121,7 @@ def load_config(path: Path) -> Config:
 if __name__ == "__main__":
     config_path = Path(__file__).parents[4] / 'configs' / 'config.yaml'
     config = load_config(config_path.expanduser().resolve())
-    print(config)
-    print(config.filtering.mask_without_radius)
+    # print(config)
+    # print(config.filtering.mask_without_radius)
+    # print(config.calibration)
+    print(config.scan)

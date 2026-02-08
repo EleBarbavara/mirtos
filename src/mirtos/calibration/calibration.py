@@ -1,8 +1,8 @@
 import numpy as np
-from abc import ABC
+from abc import ABC, abstractmethod
 from pathlib import Path
 from astropy.io import fits
-from typing import Union, Iterable
+from typing import Union, Iterable, Optional
 from scipy.signal import periodogram
 from dataclasses import dataclass, field
 
@@ -13,7 +13,11 @@ from mirtos.core.types.focal_plane import KID
 class Calibration(ABC):
     responsivities: np.ndarray
 
-    def calibrate(self, kids: Union[KID, Iterable[KID]], inplace: bool = False):
+    @abstractmethod
+    def calibrate(self,
+                  kids: Iterable[KID],
+                  elevations: np.ndarray,
+                  inplace: bool = False):
         ...
 
 
@@ -26,50 +30,63 @@ class SkyDipCalibration(Calibration):
     z: np.ndarray = field(default_factory=lambda: np.array([]))
     airmass: np.ndarray = field(default_factory=lambda: np.array([]))
 
-    def calibrate(self, kids: Union[KID, Iterable[KID]], inplace: bool = False):
+    def calibrate(self,
+                  kids: Iterable[KID],
+                  elevations: np.ndarray,
+                  inplace: bool = False):
+
         # istruzioni per calibrare le TOD con lo skydip
-
-        if isinstance(kids, KID):
-            denom = self.responsivities[kids.id] * np.exp(- self.tau_atm / np.cos(self.z - kids.pos.y))
-            if inplace:
-                kids.tod /= denom
-                return None
-
-            return kids.tod / denom
 
         tods = np.vstack([k.tod for k in kids])
         ys = np.array([k.pos.y for k in kids])
         resps = np.array([self.responsivities[k.id] for k in kids])
 
-        denom = resps[:, None] * np.exp(- self.tau_atm / np.cos(self.z[None, :] - ys[:, None]))
+        # dovrebbe essere (236, 1): i fattore di scala per tod
+        gains = resps[:, None] * np.exp(- self.tau_atm / np.cos(elevations[None, :] - ys[:, None]))
 
         if inplace:
-            tods /= denom
-            for kid, tod in zip(kids, tods):
+            tods /= gains
+            for kid, tod, gain in zip(kids, tods, gains):
                 # associo ai kid le tod calibrate
-                kid.tod = tod
+                kid.tod, kid.gain = tod, gain
+
             return None
 
-        return tods / denom
+        return gains, tods / gains
 
     @classmethod
-    def from_fits_file(cls, subscan_filename: Path, T_atm: float, tau_atm: float):
+    def from_fits_file(cls,
+                       subscan_filename: Path,
+                       T_atm: float,
+                       tau_atm: float):
+
         with fits.open(subscan_filename) as hdul:
             dt = hdul["DATA TABLE"].data
             pt = hdul["PH TABLE"].data
 
             tot_channels = len(pt[0])
+
             mask = dt["flag_track"].astype(bool)
 
             z = np.pi / 2 - dt["el"][mask]
             airmass = 1 / np.cos(z)
             sky_temp = T_atm * (1 - np.exp(-tau_atm * airmass))
 
-            resps = []
-            for ch in range(tot_channels):
-                tod = pt["chp_" + str(ch).zfill(3)][mask]
-                pars = np.polyfit(sky_temp, tod, 1)
-                resps.append(pars[0])
+            tods = np.vstack([
+                pt["chp_" + str(ch).zfill(3)][mask]
+                for ch in range(tot_channels)])
+
+            # soluzione chiusa per la regressione lineare
+            x0 = sky_temp.mean()
+            dx = sky_temp - x0
+
+            den = (dx * dx).sum()
+            resps = (tods @ dx) / den
+
+            # resps = []
+            # for ch, tod in enumerate(tods):
+            #     tod = pt["chp_" + str(ch).zfill(3)][mask]
+            #     resps.append(np.polyfit(sky_temp, tod, 1)[0])
 
         return cls(
             responsivities=np.array(resps),
@@ -81,7 +98,7 @@ class SkyDipCalibration(Calibration):
 
 
 @dataclass
-class GainCalibration(Calibration):
+class HFCalibration(Calibration):
 
     sample_freq: float
     hf_min_freq: float = 60
@@ -98,19 +115,39 @@ class GainCalibration(Calibration):
 
         return gains, mean_noise_tot, hfn_feeds
 
-    def calibrate(self, kids: Union[KID, Iterable[KID]], inplace: bool = False):
-
-        if isinstance(kids, KID):
-            raise NotImplementedError("Come calibro una singola tod quando si usa gain calibration?")
+    def calibrate(self,
+                  kids: Iterable[KID],
+                  elevations: np.ndarray,
+                  inplace: bool = False):
 
         tods = np.vstack([k.tod for k in kids])
         gains, _, _ = self._compute_gain(tods)
 
         if inplace:
             tods *= gains[:, None]
-            for kid, tod in zip(kids, tods):
+            for kid, tod, gain in zip(kids, tods, gains):
                 # associo ai kid le tod calibrate
-                kid.tod = tod
+                kid.tod, kid.gain = tod, gain
+
             return None
 
-        return tods * gains[:, None]
+        return gains, tods * gains[:, None]
+
+
+if __name__ == "__main__":
+    tau = 0.16
+    T_atm = 267
+    skydip_003_001_fits = Path("/Volumes/Data/PycharmProjects/mirtos/data/input/20250402-222030-MISTRAL-GAIN_CAL/20250402-222030-MISTRAL-GAIN_CAL_003_001.fits")
+    skydip_005_001_fits = Path("/Volumes/Data/PycharmProjects/mirtos/data/input/20250402-000651-MISTRAL-GAIN_CAL/20250402-000651-MISTRAL-GAIN_CAL_005_001.fits")
+
+    sdp_003_001_cal = SkyDipCalibration.from_fits_file(skydip_003_001_fits, T_atm, tau)
+    sdp_005_001_cal = SkyDipCalibration.from_fits_file(skydip_005_001_fits, T_atm, tau)
+
+    for sdp_cal, path in zip([sdp_003_001_cal, sdp_005_001_cal], [skydip_003_001_fits, skydip_005_001_fits]):
+
+        output_path = "/Volumes/Data/PycharmProjects/mirtos/tests/data/skydipcalibration/output_skydip_cal_" + path.stem
+        np.savez(output_path,
+                 resps=sdp_cal.responsivities,
+                 taut=tau,
+                 Tatm=T_atm)
+

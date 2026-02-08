@@ -1,8 +1,7 @@
 import numpy as np
-from astropy.wcs import WCS
-from .types.config import BinnerProjection, BinnerFrame
+from mirtos.core.types.config import MapMakingProjection, MapMakingFrame
 
-@np.vectorize
+
 def rot(x, y, theta):
     '''
     xy = (x,y)
@@ -16,139 +15,57 @@ def rot(x, y, theta):
     c = np.cos(theta)
     s = np.sin(theta)
 
-    # dim num_feed x N
-    ra_f = x * c - y * s
-    dec_f = x * s + y * c
+    # return ra / dec
+    return x * c - y * s, x * s + y * c
 
-    return ra_f, dec_f
 
-def proj_radec_to_xy(ra,dec,ra0,dec0, projection: BinnerProjection):
-        
-    if projection == BinnerProjection.SIN:
+def proj_radec_to_xy(ra, dec, ra0, dec0, projection):
+    if projection == MapMakingProjection.SIN:
         x = (ra - ra0) * np.cos(dec) + ra0
         y = dec
-
         return x, y
 
-
-    if projection == BinnerProjection.GNOM:
+    if projection == MapMakingProjection.GNOM:
         #https://mathworld.wolfram.com/GnomonicProjection.html
 
-        c = np.sin(dec0)*np.sin(dec) + np.cos(dec0)*np.cos(dec)*np.cos(ra-ra0)
-        x = (np.cos(dec) * np.sin(ra-ra0))/c
-        y = (np.cos(dec0)*np.sin(dec) - np.sin(dec0)*np.cos(dec)*np.cos(ra-ra0))/c
-                        
+        c = np.sin(dec0) * np.sin(dec) + np.cos(dec0) * np.cos(dec) * np.cos(ra - ra0)
+        x = (np.cos(dec) * np.sin(ra - ra0)) / c
+        y = (np.cos(dec0) * np.sin(dec) - np.sin(dec0) * np.cos(dec) * np.cos(ra - ra0)) / c
         return x, y
 
     else:
         raise ValueError(projection, ': this projection not available.')
 
-def conv_xy_to_latlon(x, y, par_angle, xOffset, yOffset,  center_ra, center_dec, frame: BinnerFrame):
-    lon = []
-    lat = []
-    
-    if frame == BinnerFrame.RADEC:
 
-        # il ciclo for mi riduce di una dimensione, ma e' possibile lavorare in modo matriciale
-        # vettori colonna num_feed x 1
-        x0 = xOffset[:, np.newaxis]
-        y0 = yOffset[:, np.newaxis]
-        # 1 riga per N colonne (numero di angoli parallattici)
-        par_angle = par_angle[np.newaxis, :]
+def conv_xy_to_latlon(x, y, par_angle, xOffset, yOffset, center_ra, center_dec, frame):
 
-        # per ogni KID e angolo parallattico ho il rotore dell'xoff e dell'yoff
-        # ciascuno ha dim num_feed x N
-        xoff_rot, yoff_rot = rot(x0, y0, par_angle)
+    if frame == MapMakingFrame.RADEC:
+        # broadcast offsets (num_feed,1) contro angle (1,N)
+        xO = xOffset[:, None]
+        yO = yOffset[:, None]
+        theta = par_angle[None, :]
 
-        # ra e dec hanno dimensione N (cosi come lat e lon)
-        # ra e dec (x, y) vengono resi di dimensione num_feed x N in modo da usare il broadcasting di python
-        # e sommargli direttamente yoff_rot e xoff_rot che hanno dimensione num_feed x N
-        # ottengo cosi delle matrici lat e lon: per ogni KID (righe) e valore dell'angolo parallattico ho la
-        # rispettiva lat e lon
-        lat = y[np.newaxis, :] + yoff_rot
-        lon = x[np.newaxis, :] - xoff_rot
+        xoff_rot, yoff_rot = rot(xO, yO, theta)  # (num_feed, N)
 
+        lat = y[None, :] + yoff_rot  # (num_feed, N)
+        lon = x[None, :] - xoff_rot  # (num_feed, N)
         return lat, lon
 
-    elif frame == BinnerFrame.AZEL:
+    elif frame == MapMakingFrame.AZEL:
+        x_rot, y_rot = rot(x - center_ra, y - center_dec, par_angle)  # (N,)
 
-        # x_rot e y_rot hanno dimensione 1 x N
-        x_rot, y_rot = rot(x - center_ra, y - center_dec, par_angle)
+        xO = xOffset[:, None]  # (num_feed,1)
+        yO = yOffset[:, None]  # (num_feed,1)
 
-        # num_feed x 1
-        x0 = xOffset[:, np.newaxis]
-        y0 = yOffset[:, np.newaxis]
-
-        # y_rot[np.newaxis, :] ha dim num_feed x N e y0 ha dim num_feed x 1
-        lat = y_rot[np.newaxis, :] + y0
-        lon = x_rot[np.newaxis, :] - x0 / np.cos(lat)
-
+        lat = y_rot[None, :] + yO  # (num_feed, N)
+        lon = x_rot[None, :] - xO / np.cos(lat)  # (num_feed, N)
         return lat, lon
 
-    else:      
-        raise ValueError(frame + '-> this set of coordinates is not available.')
-    
+    else:
+        raise NotImplementedError(f"`{frame}` frame not available")
 
 
-if __name__ == "__main__":
+def conv_radec_to_latlon(ra, dec,  center_ra, center_dec, projection, par_angle, xOffset, yOffset, frame):
 
-    # leggo sia i dati che ho estrapolato dal fits (N, ra, dec, ...)
-    # che i risultati ottenuti con i vecchi metodi di projections
-    expected_projection = np.load('../../../test/projections/expected_projection_test_data.npz')
-
-    # dati veri del fits
-    N = expected_projection['N']
-    # len(subscan.kids): numero di kids validi
-    num_feed = expected_projection['num_feed'] # subscan.num_feed: numero totale di kids
-    ra = expected_projection['ra']
-    dec = expected_projection['dec']
-    center_ra = expected_projection['ra0']
-    center_dec = expected_projection['dec0']
-    xOffset = expected_projection['xOffset']
-    yOffset = expected_projection['yOffset']
-    par_angle = expected_projection['par_angle']
-
-    # calcolo i risultati delle funzioni della nuova versione di projections.py
-    rot_x, rot_y = rot(ra, dec, par_angle)
-
-    x_sin, y_sin = proj_radec_to_xy(ra, dec, center_ra, center_dec, BinnerProjection.SIN)
-    x_gnom, y_gnom = proj_radec_to_xy(ra, dec, center_ra, center_dec, BinnerProjection.GNOM)
-
-    lat_radec_sin, lon_radec_sin = conv_xy_to_latlon(x_sin, y_sin, par_angle, xOffset, yOffset, center_ra,
-                                                     center_dec, BinnerFrame.RADEC)
-    lat_azel_sin, lon_azel_sin = conv_xy_to_latlon(x_sin, y_sin, par_angle, xOffset, yOffset, center_ra,
-                                                   center_dec, BinnerFrame.AZEL)
-
-    lat_radec_gnom, lon_radec_gnom = conv_xy_to_latlon(x_gnom, y_gnom, par_angle, xOffset, yOffset, center_ra,
-                                                       center_dec, BinnerFrame.RADEC)
-    lat_azel_gnom, lon_azel_gnom = conv_xy_to_latlon(x_gnom, y_gnom, par_angle, xOffset, yOffset, center_ra,
-                                                     center_dec, BinnerFrame.AZEL)
-
-
-    np.savez('../../../test/projections/output_projection_test_data.npz',
-             N=N,
-             num_feed=num_feed,
-             ra=ra,
-             dec=dec,
-             ra0=center_ra,
-             dec0=center_dec,
-             xOffset=xOffset,
-             yOffset=yOffset,
-             par_angle=par_angle,
-             center_ra=center_ra,
-             center_dec=center_dec,
-             rot_x=rot_x,
-             rot_y=rot_y,
-             x_sin=x_sin,
-             y_sin=y_sin,
-             x_gnom=x_gnom,
-             y_gnom=y_gnom,
-             lat_radec_sin=lat_radec_sin,
-             lon_radec_sin=lon_radec_sin,
-             lat_azel_sin=lat_azel_sin,
-             lon_azel_sin=lon_azel_sin,
-             lat_radec_gnom=lat_radec_gnom,
-             lon_radec_gnom=lon_radec_gnom,
-             lat_azel_gnom=lat_azel_gnom,
-             lon_azel_gnom=lon_azel_gnom,
-             )
+    x, y = proj_radec_to_xy(ra, dec, center_ra, center_dec, projection=projection)
+    return conv_xy_to_latlon(x, y, par_angle, xOffset, yOffset, center_ra, center_dec, frame)

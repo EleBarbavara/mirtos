@@ -9,12 +9,14 @@ class MaskWithoutRadiusMode(Enum):
     SIGMA = 'sigma'
     NONE = 'none'
 
+
 @dataclass(frozen=True)
 class MaskWithoutRadius:
     mode: MaskWithoutRadiusMode
     offset: float
     sigma: float
     maxiters: int
+
 
 @dataclass(frozen=True)
 class Step:
@@ -24,9 +26,9 @@ class Step:
     op: str
     params: dict[str, Any]
 
+
 @dataclass(frozen=True)
 class FilteringSteps:
-
     common: list[Step]
     mask_with_radius: list[Step]
     mask_without_radius: list[Step]
