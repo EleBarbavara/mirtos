@@ -20,7 +20,7 @@ def from_yaml(cls, filename: Path):
 
     This method reads a YAML file, parses its content, and maps the data
     to the fields in the dataclass using dacite. If any attributes of the
-    dataclass are of specific types (e.g., `u.Quantity`), dacite will cast
+    dataclass are of specific type_defs (e.g., `u.Quantity`), dacite will cast
     those attributes appropriately during the instantiation process.
 
     Args:

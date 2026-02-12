@@ -6,27 +6,40 @@ import astropy.units as u
 from astropy.wcs import WCS
 from scipy.stats import binned_statistic_2d
 
-from mirtos.core.projections import conv_xy_to_latlon, proj_radec_to_xy
-from mirtos.core.types.scan import Scan
-from mirtos.core.types.config import MapMakingFrame, load_config
+from mirtos.core.type_defs.scan import Scan
+from mirtos.core.projections import conv_radec_to_latlon
+from mirtos.core.type_defs.config import MapMakingFrame, load_config
+from mirtos.plotting.map import plot_map
 
 
-# def make_wcs(ctype1, ctype2, crval1, crval2):
-#     wcs_dict = {
-#         "CTYPE1": f"{ctype1}{projection}",
-#         "CUNIT1": "deg",
-#         "CDELT1": -pixel_size_deg,
-#         "CRPIX1": npix_x / 2,
-#         "CRVAL1": crval1,
-#         "NAXIS1": npix_x,
-#         "CTYPE2": f"{ctype2}{projection}",
-#         "CUNIT2": "deg",
-#         "CDELT2": pixel_size_deg,
-#         "CRPIX2": npix_y / 2,
-#         "CRVAL2": crval2,
-#         "NAXIS2": npix_y,
-#     }
-#     return WCS(wcs_dict)
+def _make_bins(npix_x: int, npix_y: int, pixel_size_deg: float,
+               center_ra_deg: float, center_dec_deg: float):
+    x_min = center_ra_deg - (npix_x // 2) * pixel_size_deg
+    x_max = center_ra_deg + (npix_x // 2) * pixel_size_deg
+    y_min = center_dec_deg - (npix_y // 2) * pixel_size_deg
+    y_max = center_dec_deg + (npix_y // 2) * pixel_size_deg
+    x_bins = np.linspace(x_min, x_max, npix_x)
+    y_bins = np.linspace(y_min, y_max, npix_y)
+    return x_bins, y_bins
+
+
+def _do_binning(x: np.ndarray, y: np.ndarray, values: np.ndarray, bins, range_):
+    data_map, *_ = binned_statistic_2d(
+        x, y,
+        values=values,
+        statistic="mean",
+        bins=bins,
+        range=range_)
+
+    count_map, *_ = binned_statistic_2d(
+        x, y,
+        values=values,
+        statistic="count",
+        bins=bins,
+        range=range_)
+
+    return data_map, count_map
+
 
 class MapMaker(ABC):
 
@@ -58,106 +71,77 @@ class BinnerMapMaker(MapMaker):
     def combine_scans(self):
         ...
 
+    def _make_wcs(self, ctype1: str, ctype2: str, crval1: float, crval2: float,
+                  npix_x: int, npix_y: int, pixel_size_deg: float) -> WCS:
+        wcs_dict = {
+            "CTYPE1": f"{ctype1}{self.projection}",
+            "CUNIT1": "deg",
+            "CDELT1": -pixel_size_deg,
+            "CRPIX1": npix_x / 2,
+            "CRVAL1": crval1,
+            "NAXIS1": npix_x,
+            "CTYPE2": f"{ctype2}{self.projection}",
+            "CUNIT2": "deg",
+            "CDELT2": pixel_size_deg,
+            "CRPIX2": npix_y / 2,
+            "CRVAL2": crval2,
+            "NAXIS2": npix_y,
+        }
+        return WCS(wcs_dict)
+
+    def _compute_lon_lat(self, scan_: Scan, scan_mask: np.ndarray,
+                         center_ra_rad: float, center_dec_rad: float):
+        return conv_radec_to_latlon(
+            scan_.ra[scan_mask],
+            scan_.dec[scan_mask],
+            center_ra_rad,
+            center_dec_rad,
+            self.projection,
+            scan_.par_angle[scan_mask],
+            scan_.ctx.beammap.beam_map['lon_offset'].to_numpy(),
+            scan_.ctx.beammap.beam_map['lat_offset'].to_numpy(),
+            self.frame)
+
     def make_map(self):
-
-        if len(self.scans) > 1:
-            raise ValueError('More than one scan for mapmaking. Run .combine_scans() first')
-
         npix_x, npix_y = self.npix
         pixel_size_deg = self.pixel_size.to_value('deg')
-
         center_ra_deg = np.rad2deg(self.ra_center)
         center_dec_deg = np.rad2deg(self.dec_center)
 
-        scan = self.scans[0]
+        scan_ = self.scans[0]
+        scan_mask = scan_.mask
+        values = scan_.calibrated_tods[:, scan_mask].ravel()
 
-        def make_bins():
-
-            x_bins = np.linspace(
-                center_ra_deg - (npix_x // 2) * pixel_size_deg,
-                center_ra_deg + (npix_x // 2) * pixel_size_deg,
-                npix_x)
-
-            y_bins = np.linspace(
-                center_dec_deg - (npix_x // 2) * pixel_size_deg,
-                center_dec_deg + (npix_x // 2) * pixel_size_deg,
-                npix_y)
-
-            return x_bins, y_bins
-
-        def make_wcs(ctype1, ctype2, crval1, crval2):
-            wcs_dict = {
-                "CTYPE1": f"{ctype1}{self.projection}",
-                "CUNIT1": "deg",
-                "CDELT1": -pixel_size_deg,
-                "CRPIX1": npix_x / 2,
-                "CRVAL1": crval1,
-                "NAXIS1": npix_x,
-                "CTYPE2": f"{ctype2}{self.projection}",
-                "CUNIT2": "deg",
-                "CDELT2": pixel_size_deg,
-                "CRPIX2": npix_y / 2,
-                "CRVAL2": crval2,
-                "NAXIS2": npix_y}
-
-            return WCS(wcs_dict)
-
-        def do_binning(x, y, bins, range_):
-            data_map, *_ = binned_statistic_2d(x, y,
-                                               values=scan.tods,
-                                               statistic="mean",
-                                               bins=bins,
-                                               range=range_)
-
-            count_map, *_ = binned_statistic_2d(x, y,
-                                                values=scan.tods,
-                                                statistic="count",
-                                                bins=bins,
-                                                range=range_)
-
-            return data_map, count_map
-
-        x_bins, y_bins = make_bins()
-
-        lon, lat = conv_xy_to_latlon(
-            *proj_radec_to_xy(scan.ra,
-                              scan.dec,
-                              center_ra_deg,
-                              center_dec_deg,
-                              scan.ctx.projection),
-            scan.par_angle,
-            scan.az,
-            scan.el,
-            center_ra_deg,
-            center_dec_deg,
-            scan.ctx.frame)
+        lon, lat = self._compute_lon_lat(scan_, scan_mask, self.ra_center, self.dec_center)
 
         if self.frame == MapMakingFrame.RADEC:
-            x = np.rad2deg(lat)
-            y = np.rad2deg(lon)
+            x_bins, y_bins = _make_bins(npix_x, npix_y, pixel_size_deg, center_ra_deg, center_dec_deg)
 
-            data_map, count_map = do_binning(x, y,
-                                             bins=[npix_y, npix_x],
-                                             range_=((y_bins[0], y_bins[-1]), (x_bins[0], x_bins[-1])))
+            x = np.rad2deg(lat).ravel()
+            y = np.rad2deg(lon).ravel()
 
-            wcs = make_wcs("RA--", "DEC-", center_ra_deg, center_dec_deg)
+            data_map, count_map = _do_binning(
+                x, y, values,
+                bins=[npix_y, npix_x],
+                range_=((y_bins[0], y_bins[-1]), (x_bins[0], x_bins[-1])))
 
-        elif self.frame == MapMakingFrame.AZEL:
+            wcs = self._make_wcs("RA--", "DEC-", center_ra_deg, center_dec_deg, npix_x, npix_y, pixel_size_deg)
+            return data_map, count_map, wcs
 
-            x = np.rad2deg(lat)
-            y = -np.rad2deg(lon)
+        x = np.rad2deg(lat).ravel()
+        y = -np.rad2deg(lon).ravel()
 
-            print(x.shape, y.shape)
+        x_min = -(npix_y // 2) * pixel_size_deg
+        x_max = +(npix_y // 2) * pixel_size_deg
+        y_min = -(npix_x // 2) * pixel_size_deg
+        y_max = +(npix_x // 2) * pixel_size_deg
 
-            data_map, count_map = do_binning(x, y,
-                                             bins=[npix_x, npix_y],
-                                             range_=((x_bins[0] - center_ra_deg, x_bins[-1] - center_ra_deg),
-                                                     (y_bins[0] - center_dec_deg, y_bins[-1] - center_dec_deg)))
+        data_map, count_map = _do_binning(
+            x, y, values,
+            bins=[npix_y, npix_x],
+            range_=[(x_min, x_max), (y_min, y_max)])
 
-            wcs = make_wcs("AZ--", "EL--", 0, 0)
-
-        else:
-            raise ValueError(f'Frame {self.frame} not supported')
+        wcs = self._make_wcs("AZ--", "EL--", 0, 0, npix_x, npix_y, pixel_size_deg)
 
         return data_map, count_map, wcs
 
@@ -165,14 +149,31 @@ class BinnerMapMaker(MapMaker):
 if __name__ == "__main__":
     base_path = Path(__file__).parents[3]
 
-    scan_dir = base_path / "data/input/"
-    config_path = base_path / "configs/config.yaml"
-
+    #config_path = base_path / "configs" / "a1995_conf.yaml"
+    config_path = base_path / "configs" / "cygA_conf.yaml"
     config = load_config(config_path)
-    scan = Scan.from_dir(scan_dir, config.scan)
-    scan.process(config.calibration, config.filtering)
+    scan_ra = Scan.from_dir(config.paths.ra_dir, config.scan)
+    # scan_dec = Scan.from_dir(config.paths.ra_dir, config.scan)
+    config.calibration.path = next(config.paths.gain_dir.iterdir())
+    scan_ra.process(config.calibration, config.filtering)
+    # scan_dec.process(config.calibration, config.filtering)
 
-    binner_mm = BinnerMapMaker(scans=[scan], pixel_size=config.map_making.pixel_size, npix=config.map_making.npix)
+    binner_mm = BinnerMapMaker(scans=[scan_ra], pixel_size=config.map_making.pixel_size, npix=config.map_making.npix)
     data_map_, count_map_, wcs_ = binner_mm.make_map()
 
-    print(data_map_.shape)
+    mask = count_map_ > 0
+    vmin, vmax = np.nanpercentile(data_map_[mask], [2, 98])
+    ys, xs = np.where(mask)
+    xmin, xmax = xs.min(), xs.max()
+    ymin, ymax = ys.min(), ys.max()
+
+    fig, ax = plot_map(data_map_, wcs_, None, vmin=vmin, vmax=vmax)
+    ax.set_xlim(xmin - 0.5, xmax + 0.5)
+    ax.set_ylim(ymin - 0.5, ymax + 0.5)
+
+    ax.coords.grid(False)
+    cbar = fig.colorbar(ax.images[0], ax=ax, shrink=0.6, pad=0.03)
+
+    cbar.set_label("Phases [rad]")
+    fig.savefig("test_" + ("ra.png" if "scan_ra" in locals() else "dec.png"), dpi=1000)
+    fig.show()

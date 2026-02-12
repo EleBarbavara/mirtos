@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from mirtos.core.projections import rot
 from mirtos.io.dat import read_dat
-from mirtos.core.types.config import MapMakingFrame
+from mirtos.core.type_defs.mapmaking import MapMakingFrame
 
 
 @dataclass
@@ -62,5 +62,7 @@ class BeamMap:
 
 
 if __name__ == "__main__":
-    beam_map_file = Path('/Volumes/Data/PycharmProjects/mirtos/metadata/chp_offset_rel8_14DEC24_matteo.dat')
+    beam_map_file = Path('/Volumes/Data/PycharmProjects/mirtos/metadata/chp_offset_rel8_18FEB25_matteo_corrected.dat')
     bm = BeamMap.from_dat(beam_map_file)
+    print(f"{len(bm.beam_map) - len(bm.beam_map[bm.beam_map['flag']]) = }")
+    print(bm.beam_map)

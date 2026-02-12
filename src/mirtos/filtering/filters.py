@@ -9,7 +9,7 @@ from numpy.polynomial.polynomial import Polynomial
 
 from scipy.signal import butter, sosfiltfilt
 
-from mirtos.core.types.filters import Step, MaskWithoutRadius, MaskWithoutRadiusMode
+from mirtos.core.type_defs.filters import Step, MaskWithoutRadius, MaskWithoutRadiusMode
 
 # callable indica che filter_fn e' di tipo funzione
 # np.ndarray: tod da filtrare
@@ -33,27 +33,36 @@ def register(name: str):
     return register_fn
 
 
-def get_without_radius_mask(tods: np.ndarray, params: MaskWithoutRadius):
+def get_without_radius_mask(tods: np.ndarray, subscan_mask: np.ndarray, params: MaskWithoutRadius):
     # per gestire il caso “None” (deterend non applicato) e un caso non programmato di default (no cutted o sigma)
     # allo stesso modo nel costrutto del match case, si usa questa sintassi
 
     # tods.shape[1] considera la lunghezza di una tod e non il numero di kid (.shape[0])
     tod_len = tods.shape[1]
-    mask = np.zeros(tod_len, dtype=bool)
+    tod_mask = np.zeros(tod_len, dtype=bool)
+
+    valid_tods = tods[:, subscan_mask]
+    valid_mask = np.zeros(valid_tods.shape[1], dtype=bool)
 
     if params.mode == MaskWithoutRadiusMode.CUTTED:
 
         offset = int(tod_len * params.offset)
-        mask[offset:-offset] = True
+        # tod_mask[time_mask][offset:-offset] = True
+        valid_mask[offset:-offset] = True
 
-    # per gestire il caso “None” e il caso generico allo stesso modo nel costrutto del match case, si usa questa
-    # sintassi:
     elif params.mode == MaskWithoutRadiusMode.SIGMA:
 
         # false: valori al di sopra della sigma, true: valori al di sotto della sigma
-        mask = ~sigma_clip(tods, sigma=params.sigma, maxiters=params.maxiters).mask
+        # Qui stiamo passando una matrice (KIDs, len(subscan_mask))
+        # sigma_clip ritorna una mask booleana della stessa shape
+        # Ora, applichiamo la stessa logica utilizzata per creare la maschera di subscan:
+        # scartiamo una colonna se una delle righe corrispondenti ha un valore settato a True (out;ier)
+        clipped = sigma_clip(tods[:, subscan_mask], sigma=params.sigma, maxiters=params.maxiters).mask
+        valid_mask = ~np.any(clipped, axis=0)
 
-    return mask
+    tod_mask[subscan_mask] = valid_mask
+
+    return tod_mask
 
 
 def polynomial_trend(time_: np.ndarray, tods: np.ndarray, deg: int):
@@ -94,7 +103,7 @@ def polynomial_trend(time_: np.ndarray, tods: np.ndarray, deg: int):
 def linear_detrend(time_: np.ndarray, tods: np.ndarray, filter_params: dict[str, Any]):
     """
     a linear_detrend gli passiamo gia' le TOD  mascherate(e' il caso in cui non
-    viene dato il raggio dal config.yaml) e ritorniamo la TOD mascherata e la maschera
+    viene dato il raggio dal a1995_conf.yaml) e ritorniamo la TOD mascherata e la maschera
     """
 
     # time_ ha dim N (samples)
@@ -109,7 +118,7 @@ def linear_detrend(time_: np.ndarray, tods: np.ndarray, filter_params: dict[str,
 def remove_baseline(time_: np.ndarray, tods: np.ndarray, filter_params: dict[str, Any]):
     """
     remove_baseline ha in input la TOD gia' mascherata (in quanto e' il caso in cui
-    il raggio viene definito nel config.yaml) e rimuove la baseline
+    il raggio viene definito nel a1995_conf.yaml) e rimuove la baseline
     """
 
     return tods - polynomial_trend(time_, tods, filter_params["baseline_poly_deg"])

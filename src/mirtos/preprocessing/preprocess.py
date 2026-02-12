@@ -1,11 +1,9 @@
 import numpy as np
 from pprint import pprint
-from dataclasses import dataclass, field
-
+from dataclasses import dataclass
 from mirtos.core.multipreprocess import Job, process_all
 
 
-# maggiordomo che da' a process_subscan_file le info che gli servono per processare il subscan
 @dataclass
 class PreprocessPayload:
 

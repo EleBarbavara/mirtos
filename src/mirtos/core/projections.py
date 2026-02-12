@@ -1,5 +1,5 @@
 import numpy as np
-from mirtos.core.types.config import MapMakingProjection, MapMakingFrame
+from mirtos.core.type_defs.mapmaking import MapMakingProjection, MapMakingFrame
 
 
 def rot(x, y, theta):
@@ -19,7 +19,7 @@ def rot(x, y, theta):
     return x * c - y * s, x * s + y * c
 
 
-def proj_radec_to_xy(ra, dec, ra0, dec0, projection):
+def proj_radec_to_xy(ra, dec, ra0, dec0, projection: MapMakingProjection):
     if projection == MapMakingProjection.SIN:
         x = (ra - ra0) * np.cos(dec) + ra0
         y = dec
@@ -37,8 +37,7 @@ def proj_radec_to_xy(ra, dec, ra0, dec0, projection):
         raise ValueError(projection, ': this projection not available.')
 
 
-def conv_xy_to_latlon(x, y, par_angle, xOffset, yOffset, center_ra, center_dec, frame):
-
+def conv_xy_to_latlon(x, y, par_angle, xOffset, yOffset, center_ra, center_dec, frame: MapMakingFrame):
     if frame == MapMakingFrame.RADEC:
         # broadcast offsets (num_feed,1) contro angle (1,N)
         xO = xOffset[:, None]
@@ -65,7 +64,15 @@ def conv_xy_to_latlon(x, y, par_angle, xOffset, yOffset, center_ra, center_dec, 
         raise NotImplementedError(f"`{frame}` frame not available")
 
 
-def conv_radec_to_latlon(ra, dec,  center_ra, center_dec, projection, par_angle, xOffset, yOffset, frame):
+def conv_radec_to_latlon(ra,
+                         dec,
+                         center_ra,
+                         center_dec,
+                         projection: MapMakingProjection,
+                         par_angle,
+                         xOffset,
+                         yOffset,
+                         frame):
 
     x, y = proj_radec_to_xy(ra, dec, center_ra, center_dec, projection=projection)
     return conv_xy_to_latlon(x, y, par_angle, xOffset, yOffset, center_ra, center_dec, frame)

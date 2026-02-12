@@ -1,58 +1,38 @@
-from enum import Enum
-
 import yaml
 import dacite
 from pathlib import Path
+from datetime import datetime
 from astropy import units as u
-from dataclasses import dataclass
-from typing import Optional, Union, Any, Iterable
+from dataclasses import dataclass, field
+from typing import Optional, Union
 
-from mirtos.core.types.filters import FilteringConfig, MaskWithoutRadiusMode
+from mirtos.core.type_defs.beam_map import BeamMap
+from mirtos.core.type_defs.calibration import CalibrationConfig, CalibrationType
+from mirtos.core.type_defs.filters import FilteringConfig, MaskWithoutRadiusMode
+from mirtos.core.type_defs.mapmaking import MapMakingProjection, MapMakingFrame, MapMakingConfig
 
 
 @dataclass
 class PathsConfig:
     """Paths to expected and calibration files used by the pipeline."""
     instrumentation: Path
-    tods: Path
+    datadir: Path
     resp: Union[Path, None]
+
+    ra_dir: Path = field(init=False)
+    dec_dir: Path = field(init=False)
+    gain_dir: Path = field(init=False)
+
+    def __post_init__(self):
+        self.ra_dir = next(self.datadir.glob("*RA", case_sensitive=False))
+        self.dec_dir = next(self.datadir.glob("*DEC", case_sensitive=False))
+        self.gain_dir = next(self.datadir.glob("*CAL", case_sensitive=False))
 
 
 @dataclass(frozen=True)
 class DetectorValidityConfig:
     upper_threshold: float = 7
     lower_threshold: float = 7
-
-
-class CalibrationType(Enum):
-    SKYDIP = 'SKYDIP'
-    HF = 'HF'
-    NONE = 'NONE'
-
-
-@dataclass(frozen=True)
-class CalibrationConfig:
-    tau: float
-    T_atm: float
-    type: CalibrationType
-    path: Path
-
-
-class MapMakingProjection(Enum):
-    SIN = 'SIN'
-    GNOM = 'GNOM'
-
-
-class MapMakingFrame(Enum):
-    AZEL = 'AZEL'
-    RADEC = 'RADEC'
-
-
-@dataclass(frozen=True)
-class MapMakingConfig:
-    """Configuration of the map making """
-    pixel_size: u.Quantity
-    npix: list[int]
 
 
 @dataclass
@@ -65,6 +45,7 @@ class ScanContext:
     ra_center: float = 0.0
     dec_center: float = 0.0
     angle_offset: float = 0.0
+    # beammap: Optional[BeamMap] = None
 
 
 @dataclass(frozen=True)
@@ -78,9 +59,9 @@ class PlotMapsConfig:
 
 @dataclass
 class Config:
-    """Top-level configuration corresponding to config.yaml."""
+    """Top-level configuration corresponding to a1995_conf.yaml."""
     name_target: str
-    date_obs: str
+    date_obs: datetime
     telescope: str
     num_ch_map: Union[str, int]
     paths: PathsConfig
@@ -107,11 +88,12 @@ def load_config(path: Path) -> Config:
         MapMakingProjection: MapMakingProjection,
         MapMakingFrame: MapMakingFrame,
         u.Quantity: u.Quantity,
+        datetime: lambda s: datetime.strptime(s, "%Y%m%d"),
         MaskWithoutRadiusMode: lambda s: MaskWithoutRadiusMode[s.upper()],
         # se non passo nulla a path nel file config, gli viene assegnato None.
         # None deve essere prima convertito in stringa (str(None)) e poi messo in upper case
         # cosi da essere riconosciuto nella classe enum CalibrationType
-        CalibrationType: lambda s: CalibrationType[str(s).upper()],
+        # CalibrationType: lambda s: CalibrationType[str(s).upper()],
         Path: lambda p: Path(__file__).parents[4] / p if isinstance(p, str) else p,
     }
 
@@ -119,9 +101,9 @@ def load_config(path: Path) -> Config:
 
 
 if __name__ == "__main__":
-    config_path = Path(__file__).parents[4] / 'configs' / 'config.yaml'
+    config_path = Path(__file__).parents[4] / 'configs' / 'a1995_conf.yaml'
     config = load_config(config_path.expanduser().resolve())
     # print(config)
     # print(config.filtering.mask_without_radius)
     # print(config.calibration)
-    print(config.scan)
+    print(config.paths)

@@ -33,7 +33,7 @@ def build_telescope(telescope_name: str) -> TelescopeConfig:
             fov_arcmin=7.0,
         )
 
-    raise ValueError(f"Unknown telescope in config.yaml: {telescope_name!r}")
+    raise ValueError(f"Unknown telescope in a1995_conf.yaml: {telescope_name!r}")
 
 
 # ------------------------------------------------------------
@@ -44,7 +44,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "-c", "--config",
         type=str,
-        default="configs/preprocessing/config.yaml",
+        default="configs/preprocessing/a1995_conf.yaml",
         help="Path to configuration YAML file"
     )
     return parser.parse_args()

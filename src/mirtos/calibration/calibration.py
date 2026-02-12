@@ -6,7 +6,7 @@ from typing import Union, Iterable, Optional
 from scipy.signal import periodogram
 from dataclasses import dataclass, field
 
-from mirtos.core.types.focal_plane import KID
+from mirtos.core.type_defs.focal_plane import KID
 
 
 @dataclass
@@ -17,7 +17,7 @@ class Calibration(ABC):
     def calibrate(self,
                   kids: Iterable[KID],
                   elevations: np.ndarray,
-                  inplace: bool = False):
+                  mask: np.ndarray):
         ...
 
 
@@ -33,26 +33,24 @@ class SkyDipCalibration(Calibration):
     def calibrate(self,
                   kids: Iterable[KID],
                   elevations: np.ndarray,
-                  inplace: bool = False):
+                  mask: np.ndarray):
 
         # istruzioni per calibrare le TOD con lo skydip
 
+        # tods = np.vstack([k.tod[mask] for k in kids])
         tods = np.vstack([k.tod for k in kids])
         ys = np.array([k.pos.y for k in kids])
         resps = np.array([self.responsivities[k.id] for k in kids])
 
-        # dovrebbe essere (236, 1): i fattore di scala per tod
-        gains = resps[:, None] * np.exp(- self.tau_atm / np.cos(elevations[None, :] - ys[:, None]))
+        gains = resps[:, None] * np.exp(- self.tau_atm / np.cos(elevations[mask][None, :] - ys[:, None]))
 
-        if inplace:
-            tods /= gains
-            for kid, tod, gain in zip(kids, tods, gains):
-                # associo ai kid le tod calibrate
-                kid.tod, kid.gain = tod, gain
+        # salviamo solamente il gain
+        for kid, gain in zip(kids, gains):
+            kid.gain = gain
 
-            return None
+        tods[:, mask] /= gains
 
-        return gains, tods / gains
+        return gains, tods
 
     @classmethod
     def from_fits_file(cls,
@@ -83,11 +81,6 @@ class SkyDipCalibration(Calibration):
             den = (dx * dx).sum()
             resps = (tods @ dx) / den
 
-            # resps = []
-            # for ch, tod in enumerate(tods):
-            #     tod = pt["chp_" + str(ch).zfill(3)][mask]
-            #     resps.append(np.polyfit(sky_temp, tod, 1)[0])
-
         return cls(
             responsivities=np.array(resps),
             tau_atm=tau_atm,
@@ -111,43 +104,29 @@ class HFCalibration(Calibration):
         hfn_feeds = np.sqrt(ps[..., mask]).mean()
         mean_noise_tot = hfn_feeds.mean()
 
-        gains = mean_noise_tot / hfn_feeds
+        gains = hfn_feeds / mean_noise_tot
 
         return gains, mean_noise_tot, hfn_feeds
 
     def calibrate(self,
                   kids: Iterable[KID],
                   elevations: np.ndarray,
-                  inplace: bool = False):
+                  mask: np.ndarray):
 
-        tods = np.vstack([k.tod for k in kids])
+        tods = np.vstack([k.tod[mask] for k in kids])
         gains, _, _ = self._compute_gain(tods)
 
-        if inplace:
-            tods *= gains[:, None]
-            for kid, tod, gain in zip(kids, tods, gains):
-                # associo ai kid le tod calibrate
-                kid.tod, kid.gain = tod, gain
+        # salviamo solamente il gain
+        for kid, gain in zip(kids, gains):
+            kid.gain = gain
 
-            return None
-
-        return gains, tods * gains[:, None]
+        return gains, tods / gains[:, None]
 
 
 if __name__ == "__main__":
     tau = 0.16
     T_atm = 267
-    skydip_003_001_fits = Path("/Volumes/Data/PycharmProjects/mirtos/data/input/20250402-222030-MISTRAL-GAIN_CAL/20250402-222030-MISTRAL-GAIN_CAL_003_001.fits")
-    skydip_005_001_fits = Path("/Volumes/Data/PycharmProjects/mirtos/data/input/20250402-000651-MISTRAL-GAIN_CAL/20250402-000651-MISTRAL-GAIN_CAL_005_001.fits")
 
-    sdp_003_001_cal = SkyDipCalibration.from_fits_file(skydip_003_001_fits, T_atm, tau)
-    sdp_005_001_cal = SkyDipCalibration.from_fits_file(skydip_005_001_fits, T_atm, tau)
-
-    for sdp_cal, path in zip([sdp_003_001_cal, sdp_005_001_cal], [skydip_003_001_fits, skydip_005_001_fits]):
-
-        output_path = "/Volumes/Data/PycharmProjects/mirtos/tests/data/skydipcalibration/output_skydip_cal_" + path.stem
-        np.savez(output_path,
-                 resps=sdp_cal.responsivities,
-                 taut=tau,
-                 Tatm=T_atm)
-
+    p = Path("/Volumes/Data/PycharmProjects/mirtos/data/input/20250403-023545/20250403-033037-MISTRAL-GAIN_CAL/20250402-222030-MISTRAL-GAIN_CAL_003_001.fits")
+    sdp_003_001_cal = SkyDipCalibration.from_fits_file(p, T_atm, tau)
+    print(sdp_003_001_cal)

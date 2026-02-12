@@ -21,7 +21,7 @@ class MaskWithoutRadius:
 @dataclass(frozen=True)
 class Step:
     """
-    dataclasse che contiene le informazioni che stanno sotto le chiavi common, ... di config.yaml
+    dataclasse che contiene le informazioni che stanno sotto le chiavi common, ... di a1995_conf.yaml
     """
     op: str
     params: dict[str, Any]

@@ -6,27 +6,51 @@ from pprint import pprint
 import astropy.units as u
 from astropy.io import fits
 from datetime import datetime
+from collections import Counter
 from dataclasses import dataclass, field
 
-from mirtos.calibration.calibration import SkyDipCalibration
-from mirtos.core.projections import proj_radec_to_xy, conv_xy_to_latlon
-from mirtos.core.types.beam_map import BeamMap
-from mirtos.core.types.config import (load_config,
-                                      MapMakingFrame,
-                                      MapMakingProjection,
-                                      CalibrationType,
-                                      CalibrationConfig,
-                                      ScanContext)
-from mirtos.core.types.filters import FilteringConfig
-from mirtos.core.types.focal_plane import KID, Position
-from mirtos.core.multipreprocess import process_all, Job, outputs_valid
+from memory_profiler import profile
 
+from mirtos.calibration.calibration import SkyDipCalibration
+from mirtos.core.projections import conv_radec_to_latlon
+from mirtos.core.type_defs.beam_map import BeamMap
+from mirtos.core.type_defs.config import (load_config,
+                                          MapMakingFrame,
+                                          MapMakingProjection,
+                                          CalibrationType,
+                                          CalibrationConfig,
+                                          ScanContext)
+
+from mirtos.core.type_defs.filters import FilteringConfig
+from mirtos.core.type_defs.focal_plane import KID, Position
+from mirtos.core.multipreprocess import process_all, Job, outputs_valid
 from mirtos.filtering.filters import run_filter_steps, get_without_radius_mask
 
 
+def _get_beammap(beammap_filename: Path,
+                 frame: MapMakingFrame,
+                 xOffset: np.ndarray,
+                 yOffset: np.ndarray,
+                 par_angle: np.ndarray):
+
+    if not beammap_filename.exists():
+        print(f"Beammap file {beammap_filename} not found. Using xOffset and yOffset from fits file")
+
+        xOffset = np.deg2rad(xOffset)
+        yOffset = np.deg2rad(yOffset)
+        beammap = BeamMap.from_fits_cols(lon_offset=xOffset, lat_offset=yOffset)
+
+    else:
+        beammap = BeamMap.from_dat(beammap_filename,
+                                   frame=frame,
+                                   par_angle=par_angle if frame == MapMakingFrame.RADEC else None,
+                                   valid_kids=True)
+
+    return beammap
+
 @dataclass
 class Subscan:
-    id_subscan: int
+    id: int
     num_feed: int
     obs_datetime: datetime
     ra: np.ndarray
@@ -37,6 +61,7 @@ class Subscan:
     mask: np.ndarray
     time: np.ndarray
     kids: list[KID]
+    beammap: BeamMap
 
     # property mi consente di creare un attributo al volo usando gli attributi di Subscan
     @property
@@ -86,14 +111,10 @@ class Subscan:
             ft = hdul[data_table].data['flag_track']
 
             # flag_track[i] = 1 indica che non ci troviamo su una rampa e quindi e' valido
-            # flag_track[i] = 0 indica che non ci troviamo su una rampa e quindi e' da scartare
+            # flag_track[i] = 0 indica che ci troviamo su una rampa e quindi e' da scartare
             # maschera del flag track che, applicata ai dati, nasconde rampe di accelerazione e decelerazione
             # altrimenti prendo tutto il subscan
             flag_track_mask = ft.astype(bool) if ctx.flag_track else np.ones(len(ft), dtype=bool)
-
-            # TODO: mettere in ScanContext
-            # ra_center = hdul['PRIMARY'].header['HIERARCH RightAscension']
-            # dec_center = hdul['PRIMARY'].header['HIERARCH Declination']
 
             # quanti detector ho (non ch) - l'esclusione dei detector non buoni avviene in beam_map.py
             num_feed = len(hdul[ph_table].data[0])
@@ -118,33 +139,18 @@ class Subscan:
             # combino la maschera che toglie i nan da quella che toglie i flag track
             mask &= flag_track_mask
 
-            ra = arrays[0][mask]
-            dec = arrays[1][mask]
-            az = arrays[2][mask]
-            el = arrays[3][mask]
-            par_angle = arrays[4][mask]
-            time_ = arrays[5][mask]
+            ra, dec, az, el, par_angle, time_ = arrays
 
             # creo le stringhe channel basandomi sui kid
             hdr = ["chp_" + str(i).zfill(3) for i in range(num_feed)]
 
-            # costruisco beammap a partire da file fits se non viene passato un file beammap.dat
-            if isinstance(ctx.beammap_filename, Path):
-                if not ctx.beammap_filename.exists():
-
-                    print(f"Beammap file {ctx.beammap_filename} not found. Using xOffset and yOffset from fits file.")
-
-                    xOffset = np.deg2rad(hdul['FEED TABLE'].data['xOffset'])
-                    yOffset = np.deg2rad(hdul['FEED TABLE'].data['yOffset'])
-                    beammap = BeamMap.from_fits_cols(lon_offset=xOffset, lat_offset=yOffset)
-
-                else:
-                    beammap = BeamMap.from_dat(ctx.beammap_filename,
-                                               frame=ctx.frame,
-                                               par_angle=par_angle,
-                                               valid_kids=True)
-
             kids = []
+
+            beammap = _get_beammap(ctx.beammap_filename,
+                                   ctx.frame,
+                                   hdul[ph_table].data['lon-offset'],
+                                   hdul[ph_table]._data['lat-offset'],
+                                   par_angle[mask])
 
             # named tuples sono tuple che emulano oggetti per cui accedo ai loro elementi con l'operatore '.'
             for row in beammap.beam_map.itertuples():
@@ -154,28 +160,16 @@ class Subscan:
                         quality_factor=-1,
                         electrical_responsivity=-1,
                         optical_responsivity=-1,
-                        gain=-1,
+                        gain=np.array([]),
                         saturation_up=-1,
                         saturation_down=-1,
                         ch=row.Index,  # avendo tolto gia' i KID non validi con beammap, qui channel e' uguale a id kid
                         resonance_freq_hz=-1,
-                        sweep_amplitude=np.array([]),
-                        sweep_phase=np.array([]),
-                        tod=hdul[ph_table].data[hdr[row.Index]][mask],  # prendo TOD senza nan corrispondenti a ra, dec
-                        validity=ctx.detector_validity)
-                )
+                        tod=hdul[ph_table].data[hdr[row.Index]],  # prendo TOD senza nan corrispondenti a ra, dec
+                        validity=ctx.detector_validity))
 
-            # timestream_raw = []
-            # timestream_raw = hdul['PH TABLE'].metadata[hdr[0]][flag_track]
-            # for i in range(0, num_feed):
-            #     try:
-            #         timestream_raw.append(hdul['PH TABLE'].metadata[hdr[i]][flag_track])
-            #         # estrazione TOD basata su ch
-            #         ts_nan = hdul['PH TABLE'].data[hdr[i]]
-            #         # attributo TOD_raw, lista di TOD di tutti i canali
-            #         timestream_raw.append(ts_nan[np.logical_not(np.isnan(ra_nan))])
-            #     except:
-            #         timestream_raw.append([np.nan]*num_timestep)
+                # di base, la tod del kid va filtrata solo con la maschera del subscan
+                kids[-1].mask = mask[:]
 
             if not np.all(not arr.size for arr in [kids[0].tod, ra, dec, par_angle]):
                 return None
@@ -190,14 +184,17 @@ class Subscan:
                        par_angle,
                        mask,
                        time_,
-                       kids)
+                       kids,
+                       beammap)
 
+    # @profile
     # calibration sara' l'oggetto istanziato dalla classe Calibration (modificare skydipcalibration.py)
     def process(self,
                 projection: MapMakingProjection,
                 frame: MapMakingFrame,
                 ra_center: float,
                 dec_center: float,
+                # beam_map_: BeamMap,
                 cal_conf: CalibrationConfig,
                 filter_conf: FilteringConfig):
 
@@ -210,35 +207,33 @@ class Subscan:
         else:
             raise ValueError(f"Calibration type {cal_conf.type} not supported.")
 
-        # se inplace = True, MODIFICa direttamente le tod dei KID passati
-        calibration.calibrate(self.kids, self.el, inplace=True)
+        # se inplace = True, modifica direttamente le tod dei KID passati
+        _, cal_tods = calibration.calibrate(self.kids, self.el, self.mask)
 
-        # TODO: INSERIRE COMMENTO
-        # tods, gains = calibration.calibrate(self.kids, self.el, inplace=False)
-
-        tods = np.vstack([k.tod for k in self.kids])
         mask_type = "mask_without_radius"
 
         if filter_conf.radius.value:
 
-            lon, lat = conv_xy_to_latlon(
-                *proj_radec_to_xy(self.ra, self.dec, ra_center, dec_center, projection),
-                self.par_angle,
-                self.az,
-                self.el,
-                ra_center,
-                dec_center,
-                frame)
+            lon, lat = conv_radec_to_latlon(
+                self.ra, self.dec,
+                center_ra=ra_center, center_dec=dec_center,
+                par_angle=self.par_angle,
+                xOffset=self.beam_map.beam_map['lon_offset'],
+                yOffset=self.beam_map.beam_map['lat_offset'],
+                projection=projection, frame=frame)
 
             mask_type = "mask_with_radius"
             # da arcsec a rad
             radius = filter_conf.radius.to(u.rad).value
             dist_from_center = np.sqrt((lon - ra_center) ** 2 + (lat - dec_center) ** 2)
-            mask = dist_from_center <= radius  # TODO: ritorna matrice (1924, 1924), verificare correttezza
+            mask = dist_from_center <= radius  # TODO: ritorna matrice (time_samples, time_samples)
+            # considero i soli istanti temporali per cui sia lon che lat sono all'interno del cerchio.
+            # Infine combino la maschera per i KIDs con la maschera del subscan
+            mask = self.mask & mask.all(axis=0)
 
         else:
             # calcolo la maschera senza avere il raggio definito nello yaml
-            mask = get_without_radius_mask(tods, filter_conf.mask_without_radius)
+            mask = get_without_radius_mask(cal_tods, self.mask, filter_conf.mask_without_radius)
 
         # definisco la lista dei filtri specifici e di quelli common
         # il cui ordine di esecuzione e' quello dello yaml.
@@ -247,11 +242,34 @@ class Subscan:
         filters = getattr(filter_conf.steps, mask_type) + filter_conf.steps.common
         # filtro le tod mascherate, a prescindere che siano mascherate
         # con o senza raggio
-        tods = run_filter_steps(self.time[mask], tods[:, mask], filters)
+        filtered_tods = run_filter_steps(self.time[mask], cal_tods[:, mask], filters)
 
-        # aggiorno la maschera e la tod per ogni kid
-        for kid, tod in zip(self.kids, tods):
-            kid.mask, kid.tod = mask, tod
+        # la maschera ottenuta con/senza raggio serve solamente a rimuovere la baseline e non
+        # va salvata all'interno del KID proprio perche', uscurando la sorgente, non produrrebbe poi
+        # in fase di map-making la mappa che vogliamo
+        for kid, cal_tod, filt_tod in zip(self.kids, cal_tods, filtered_tods):
+            kid.apply_calibration_inplace(cal_tod)
+            kid.tod[mask] = filt_tod
+
+
+def _longest_common_prefix(s1, s2):
+    # Initialize the common prefix as an empty string
+    common_prefix = ""
+
+    # Find the minimum length of the two strings
+    min_length = min(len(s1), len(s2))
+
+    # Iterate through the characters up to the minimum length
+    for i in range(min_length):
+        # Compare characters at the same position
+        if s1[i] == s2[i]:
+            # Append the matching character to the common prefix
+            common_prefix += s1[i]
+        else:
+            # Break the loop if characters do not match
+            break
+
+    return common_prefix
 
 
 @dataclass
@@ -263,20 +281,41 @@ class Scan:
 
     def __post_init__(self):
 
-        for attr in ['par_angle', 'ra', 'dec']:
+        for s in self.subscans:
+            lens = {
+                "ra": s.ra.shape[0],
+                "dec": s.dec.shape[0],
+                "par_angle": s.par_angle.shape[0],
+                "time": s.time.shape[0],
+            }
 
-            # getattr chiede a subscan di accedere all'attributo attr e di ritornare il suo valore.
-            # con le {} creo un set (insieme) comprehension in quanto negli insieme non posso esserci valori duplicati,
-            # se tutti i subscan hanno lo stesso num_feed, l'insieme avra' lunghezza 1
-            if len(all_equal := {getattr(subscan, attr).shape[0] for subscan in self.subscans}) != 1:
-                raise ValueError(f"Subscans in scan {self.id_scan} have different number of {attr}: {all_equal}")
+            if len(set(lens.values())) != 1:
+                items = " ".join(f"{k}={v:>5d}" for k, v in lens.items())
+                print(f"[WARNING scan={self.id_scan}] Subscan shapes differ: [ {items}]")
 
-        # queste tre istruzioni sono automaticamente controllate nel ciclo
-        # (1222, 147704) daisy #(1209, 9647) 30s #where the fits file is not 'NULL' or not zero
-        # cls.range_timestep = range(0, len(cls.par_angle), 1)
-        # cls.all_range_timestep.append(cls.range_timestep)
-        # cls.num_timestep = int(len(cls.range_timestep))
+    def __add__(self, other):
 
+        # serve a rimuovere l'info "RA" e "DEC" e lasciare solamente la parte in comune
+        self.id_scan = _longest_common_prefix(self.id_scan, other.id_scan)
+
+        # estendo i subscan di self con quelli di other
+        if isinstance(other, Scan):
+            self.subscans.extend(other.subscans)
+            return self
+
+        return NotImplemented
+
+    def __len__(self):
+        return len(self.subscans)
+
+    # permette di iterare su un oggetto di tipo Scan, in particolare sui suoi subscans.
+    # Esempio:
+    # scan = Scan(...)
+    # for subscan in scan:
+    #     ...
+    # anziche' fare
+    # for subscan in scan.subscans:
+    #     ...
     def __getitem__(self, index):
         return self.subscans[index]
 
@@ -305,7 +344,7 @@ class Scan:
 
     @property
     def mask(self):
-        return self._concat_data('mask')
+        return np.hstack([sub.mask for sub in self.subscans])
 
     @property
     def par_angle(self):
@@ -323,7 +362,7 @@ class Scan:
             k0: KID = self.subscans[0].kids[i]
 
             tod = np.hstack([sub.kids[i].tod for sub in self.subscans])
-            gain = np.mean([sub.kids[i].gain for sub in self.subscans])
+            gain = np.hstack([sub.kids[i].gain for sub in self.subscans])
             mask = np.hstack([sub.kids[i].mask for sub in self.subscans])
 
             k = KID(
@@ -352,6 +391,10 @@ class Scan:
     def tods(self):
         return np.vstack([k.tod for k in self.kids])
 
+    @property
+    def calibrated_tods(self):
+        return np.vstack([k.calibrated_tod for k in self.kids])
+
     def process(self, cal_conf: CalibrationConfig, filter_conf: FilteringConfig):
 
         for subscan in self.subscans:
@@ -360,6 +403,7 @@ class Scan:
                 frame=self.ctx.frame,
                 ra_center=self.ctx.ra_center,
                 dec_center=self.ctx.dec_center,
+                beam_map_=self.ctx.beammap,
                 cal_conf=cal_conf,
                 filter_conf=filter_conf)
 
@@ -368,19 +412,17 @@ class Scan:
                  scan_dir_: Path,
                  ctx: ScanContext):
 
-        job_ids = []
-        for file in scan_dir_.iterdir():
-            # 'dirfile_20240611_124429__MERGED_WITH__20240611-124423-MISTRAL-JUPITER_FOCUS_SCAN_001_108' il suo id e' 001_108
-            job_ids.append(file.stem.split("_")[-1])
+        fits_files = sorted([p for p in scan_dir_.rglob("*.fits") if "gain" not in p.stem.lower()])
+        job_ids = [p.stem.split("_")[-1] for p in fits_files]
 
-        with fits.open(file) as hdul:
+        with fits.open(fits_files[0]) as hdul:
             ctx.ra_center = hdul['PRIMARY'].header['HIERARCH RightAscension']
             ctx.dec_center = hdul['PRIMARY'].header['HIERARCH Declination']
 
-        jobs = [Job(job_id, SubscanPayload(file, ctx))
-                for job_id, file in zip(job_ids, scan_dir_.iterdir()) if file.suffix == '.fits']
+        # ctx.beammap = beammap
+        jobs = [Job(job_id, SubscanPayload(p, ctx)) for job_id, p in zip(job_ids, fits_files)]
 
-        subscans = process_all(jobs, process_subscan_file)
+        subscans = process_all(jobs, process_subscan_file, tb_limit=5)
 
         return cls(
             id_scan=scan_dir_.name,
@@ -395,13 +437,6 @@ class SubscanPayload:
     # contiene le informazioni necessarie per processare un singolo subscan
     subscan_filename: Path
     ctx: ScanContext
-
-    # aprire file subscan con mirtos.io.fits.load_subscan_fits
-
-    # a noi dell'hdul serve tutto quello che sta in read_discos_fits +
-    # self.xOffset, self.yOffset, self.tod_raw, self.num_feed, self.excl_feed = self.exclude_channels(self.tod_raw, self.num_feed, self.dati_beammap)
-    # con check se la beamap esiste, altrtimenti prendi offsets dal fits file (ma non li trova se non c'e' il dat)
-    # flaggare errore
 
 
 # funzione che processa un subscan e quindi esegue un singolo job
@@ -419,17 +454,22 @@ def process_subscan_file(job: SubscanPayload) -> Subscan:
 if __name__ == "__main__":
     base_path = Path(__file__).parents[4]
 
-    scan_dir = base_path / "data/input/"
-    subscan_fit = scan_dir / '20250402-212049-MISTRAL-A1995_RA_001_002.fits'
-    config_path = base_path / "configs/config.yaml"
-    beam_map = base_path / "metadata/chp_offset_rel8_14DEC24_matteo.dat"
-    skydip_path = scan_dir / "20250402-222030-MISTRAL-GAIN_CAL/20250402-222030-MISTRAL-GAIN_CAL_003_001.fits"
+    config_path = base_path / "configs/a1995_conf.yaml"
 
     tic = time.perf_counter()
     config = load_config(config_path)
-    scan = Scan.from_dir(scan_dir, config.scan)
-    scan.process(config.calibration, config.filtering)
+    scan_ra = Scan.from_dir(config.paths.ra_dir, config.scan)
+    scan_dec = Scan.from_dir(config.paths.dec_dir, config.scan)
+    config.calibration.path = next(config.paths.gain_dir.iterdir())
+    scan_ra.process(config.calibration, config.filtering)
+    scan_dec.process(config.calibration, config.filtering)
+
+    scan = scan_ra + scan_dec
+    print(f"{len(scan_ra) =}, {len(scan_dec) =}, {len(scan) =}")
+    #  assert len(scan) == len(scan_ra) + len(scan_dec)
+
     toc = time.perf_counter()
 
     print(f"Tempo totale: {toc - tic:.2f}s")
+
 
