@@ -9,6 +9,22 @@ class Position:
     x: float
     y: float
 
+    def __cmp__(self, other):
+        # defnisce come comparare due oggetti di tipo Position
+        # per fare plot del piano focale
+        return self.x == other.x and self.y == other.y
+
+    @property
+    def r(self):
+        # ordinamento per raggio (pattern radiali)
+        return np.hypot(self.x, self.y)
+
+    @property
+    def theta(self):
+        # ordinamento polare (pattern angolari)
+        # spirale attorno al centro con arctan2
+        return np.arctan2(self.y, self.x)
+
 
 @dataclass
 class Detector(ABC):
@@ -25,20 +41,19 @@ class Detector(ABC):
     # se init fosse True, l'attributo verrebbe creato quando istanzio la classe
     # ma questo genererebbe un problema quando la classe KID eredita Detector
     # perche' all'inizio della classe KID ho attributi obbligatori
-    mask: np.ndarray = field(init=False, default_factory=lambda: np.array([]))  # opzionale
+    mask: np.ndarray = field(init=False, default_factory=lambda: np.array([]))
 
-    # durante l'esecuzione di Process, arrivo a sostituire la tod grezza con quella calibrata
-    # Qualora richiamassa il kid.calibrated_tod, effettuerei una seconda divisione per il gain,
-    # cosa che non voglio
-    # Questo attributo privato permette di tenere traccia di quando ho effettuato una modifica
-    # distruttiva della tod e quindi, in caso venga eseguito l'accesso a .calibrated_tod, controlla
-    # se fare o meno la divisione per gain
-    _tod_is_already_calibrated: bool = field(init=False, default=False)
+    _is_calibrated: bool = field(init=False, default=False)
 
     def __post_init__(self):
-        # se non e' stato passata alcuna maschera, la creo con tutti i valori False
+        # se non e' stato passata alcuna maschera, la creo con tutti i valori True
+        # mask e' la maschera per KID, ovvero quella with/without radius
         if not self.mask.size:
-            self.mask = np.zeros_like(self.tod, dtype=bool)
+            self.mask = np.ones_like(self.tod, dtype=bool)
+
+    @property
+    def is_calibrated(self):
+        return self._is_calibrated
 
     # attributo astratto che ci dice se la tod e' valida o meno
     @property
@@ -46,15 +61,14 @@ class Detector(ABC):
     def is_valid(self):
         ...
 
-    @property
-    def calibrated_tod(self):
-        cal_tod = self.tod[:]
-        cal_tod[self.mask] /= self.gain
-        return cal_tod if not self._tod_is_already_calibrated else self.tod
-
 
 @dataclass
 class KID(Detector):
+
+    @property
+    def is_calibrated(self):
+        return self._is_calibrated
+
     ch: int  # y
     resonance_freq_hz: float
     sweep_amplitude: np.ndarray = field(default_factory=lambda: np.array([]))
@@ -74,11 +88,16 @@ class KID(Detector):
         low = mean - lower_threshold * std
         high = mean + upper_threshold * std
 
-        return (data > low) & (data < high).all()
+        return ((data > low) & (data < high)).all()
 
     def apply_calibration_inplace(self, cal_tod: np.ndarray):
         self.tod = cal_tod
-        self._tod_is_already_calibrated = True
+        self._is_calibrated = True
+
+    # permette di settare un attributo privato ad un dato valore
+    @is_calibrated.setter
+    def is_calibrated(self, value):
+        self._is_calibrated = value
 
 
 @dataclass
@@ -93,8 +112,6 @@ class TES(Detector):
 class FocalPlane:
     detectors: list[Detector]
 
-    # TODO: metodo pixel offset
-
 
 if __name__ == "__main__":
     kid = KID(id=1,
@@ -102,7 +119,7 @@ if __name__ == "__main__":
               quality_factor=1,
               electrical_responsivity=1,
               optical_responsivity=1,
-              gain=1,
+              gain=np.array([]),
               saturation_down=1,
               saturation_up=1,
               ch=1,

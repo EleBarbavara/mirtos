@@ -1,12 +1,8 @@
-from dataclasses import dataclass
-from typing import Any, Callable
-from enum import Enum
-
-from astropy.stats import sigma_clip
+from typing import Any, Callable, Optional
 
 import numpy as np
-from numpy.polynomial.polynomial import Polynomial
-
+from astropy.stats import sigma_clip
+from scipy.optimize import curve_fit
 from scipy.signal import butter, sosfiltfilt
 
 from mirtos.core.type_defs.filters import Step, MaskWithoutRadius, MaskWithoutRadiusMode
@@ -20,7 +16,7 @@ filter_fn = Callable[[np.ndarray, np.ndarray, dict[str, Any]], np.ndarray]
 FILTERS: dict[str, filter_fn] = {}
 
 
-# il decoratore modifica il comportamento di una funzione senza modificarne il contenuto
+# register e' il decoratore che modifica il comportamento di una funzione senza modificarne il contenuto
 # il decoratore prende in input la chiave che vogliamo salvare come step di filtraggio
 def register(name: str):
     # funzione interna che opera su name e associa il nome alla funzione fn nel dizionario FILTERS
@@ -33,40 +29,82 @@ def register(name: str):
     return register_fn
 
 
-def get_without_radius_mask(tods: np.ndarray, subscan_mask: np.ndarray, params: MaskWithoutRadius):
-    # per gestire il caso “None” (deterend non applicato) e un caso non programmato di default (no cutted o sigma)
-    # allo stesso modo nel costrutto del match case, si usa questa sintassi
+def get_without_radius_mask(tods: np.ndarray,
+                            params: MaskWithoutRadius) -> np.ndarray:
 
-    # tods.shape[1] considera la lunghezza di una tod e non il numero di kid (.shape[0])
+    # tods: (n_kids, tod_len)
     tod_len = tods.shape[1]
-    tod_mask = np.zeros(tod_len, dtype=bool)
-
-    valid_tods = tods[:, subscan_mask]
-    valid_mask = np.zeros(valid_tods.shape[1], dtype=bool)
+    masks2d = np.zeros_like(tods, dtype=bool)
 
     if params.mode == MaskWithoutRadiusMode.CUTTED:
 
         offset = int(tod_len * params.offset)
-        # tod_mask[time_mask][offset:-offset] = True
-        valid_mask[offset:-offset] = True
+        off = min(offset, tod_len)
+
+        if off > 0:
+            idx = np.arange(tod_len)
+            # broadcast automatico su tutte le righe
+            masks2d[:] = (idx < off) | (idx >= tod_len - off)
 
     elif params.mode == MaskWithoutRadiusMode.SIGMA:
 
-        # false: valori al di sopra della sigma, true: valori al di sotto della sigma
-        # Qui stiamo passando una matrice (KIDs, len(subscan_mask))
-        # sigma_clip ritorna una mask booleana della stessa shape
-        # Ora, applichiamo la stessa logica utilizzata per creare la maschera di subscan:
-        # scartiamo una colonna se una delle righe corrispondenti ha un valore settato a True (out;ier)
-        clipped = sigma_clip(tods[:, subscan_mask], sigma=params.sigma, maxiters=params.maxiters).mask
-        valid_mask = ~np.any(clipped, axis=0)
-
-    tod_mask[subscan_mask] = valid_mask
-
-    return tod_mask
+        # Viene calcolata una maschera per kid (axis=1, cioe' per riga)
+        masks2d = ~sigma_clip(tods,
+                              sigma=params.sigma,
+                              maxiters=params.maxiters,
+                              axis=1).mask
+    return masks2d
 
 
-def polynomial_trend(time_: np.ndarray, tods: np.ndarray, deg: int):
+def polynomial_trend_masked(time_: Optional[np.ndarray], tods: np.ndarray, masks2d: np.ndarray, deg: int):
     """
+    Fit per-detector polynomial using only samples where masks2d[k] is True,
+    but return the trend evaluated on the full time_ grid (shape K×N).
+    """
+
+    # fa la stessa cosa di polynomial_trend ma agisce riga per riga nella matrice delle TODs in quanto la
+    # maschera data dal raggio contiene un numero di True e False diversi
+
+    # stimo i coefficienti sui dati mascherati, ma toglo il trend finale a tutta la TOD
+
+    K, N = tods.shape
+    trend = np.zeros_like(tods)
+
+    time_ = time_ if time_ is not None else np.arange(N, dtype=float)
+
+    for k in range(K):
+        mk = masks2d[k]
+        if mk.sum() < (deg + 1):
+            continue
+
+        tk = time_[mk]
+
+        t0 = tk.mean()
+        dt = tk - t0
+
+        # scaliamo per portare dt in [0, 1]
+        std = dt.std() or 1.
+
+        xk = dt / std
+        yk = tods[k, mk]
+        # genera una matrice di coefficienti. un fit polinomiale non e' lineare nel tempo, ma i coefficienti lo
+        # sono e quindi posso fare un fit sui coefficienti
+        Vk = np.vander(xk, N=deg + 1, increasing=True)
+
+        ck, *_ = np.linalg.lstsq(Vk, yk, rcond=None)
+
+        # matrice dei coefficienti valutata su tutto il tempo (sempre scalato)
+        V = np.vander((time_ - t0) / std, N=deg + 1, increasing=True)
+        # valuto la matrice dei coefficienti nel tempo: la nostra y
+        trend[k] = V @ ck
+
+    return trend
+
+
+def polynomial_trend(time_: Optional[np.ndarray], tods: np.ndarray, deg: int):
+    """
+    Usata in modalita' cutted in quanto tutti i kid (tutte le tod) hanno tot dati all'inizio a True e quelli interni
+    a False. quindi non ho il problema di sigma clip per cui le TOD hanno numero di True e False diversi.
     Fits a polynomial trend to time-ordered data and returns the computed trend.
 
     This function takes time-ordered data points, constructs a polynomial model of
@@ -80,9 +118,19 @@ def polynomial_trend(time_: np.ndarray, tods: np.ndarray, deg: int):
              set in `tods`. The dimensions match the input array `tods`.
     """
 
+    n_samples = tods.shape[1 if tods.ndim == 2 else 0]
+    time_ = time_ if time_ is not None else np.arange(n_samples, dtype=float)
+
+    t0 = time_.mean()
+    dt = time_ - t0
+
+    # scaliamo per portare dt in [0, 1]
+    std = dt.std() or 1.
+    x = dt / std
+
     # accetta dati ordinati per dimensione temporale
     # p = Polynomial.fit(time_, tods, deg)
-    V = np.vander(time_, N=deg + 1, increasing=True)
+    V = np.vander(x, N=deg + 1, increasing=True)
 
     # Multi-RHS least squares: V @ C ≈ Y.T
     # *_ assegna il primo valore a C e scarta tutto il resto
@@ -100,43 +148,72 @@ def polynomial_trend(time_: np.ndarray, tods: np.ndarray, deg: int):
 
 
 @register('linear_detrend')
-def linear_detrend(time_: np.ndarray, tods: np.ndarray, filter_params: dict[str, Any]):
+def linear_detrend(time_: Optional[np.ndarray], tods: np.ndarray, filter_params: dict[str, Any]):
     """
     a linear_detrend gli passiamo gia' le TOD  mascherate(e' il caso in cui non
-    viene dato il raggio dal a1995_conf.yaml) e ritorniamo la TOD mascherata e la maschera
+    viene dato il raggio dal a1995.yaml) e ritorniamo la TOD con il trend rimosso
     """
 
     # time_ ha dim N (samples)
     # tods ha dim num_feed x N
 
-    # a polynomial passo la mtrice tods traposta, ma tods e' non trasposta
-    # quindi traspondo p(time_)
-    return tods - polynomial_trend(time_, tods, 1)
+    time_ = time_ if time_ is not None else np.arange(tods.shape[1], dtype=float)
+
+    masks2d: np.ndarray = filter_params.get("masks2d")
+    if masks2d is None:
+        return tods - polynomial_trend(time_, tods, 1)
+
+    return tods - polynomial_trend_masked(time_, tods, masks2d, 1)
 
 
 @register('remove_baseline')
-def remove_baseline(time_: np.ndarray, tods: np.ndarray, filter_params: dict[str, Any]):
+def remove_baseline(time_: Optional[np.ndarray], tods: np.ndarray, filter_params: dict[str, Any]):
     """
     remove_baseline ha in input la TOD gia' mascherata (in quanto e' il caso in cui
-    il raggio viene definito nel a1995_conf.yaml) e rimuove la baseline
+    il raggio viene definito nel a1995.yaml) e rimuove la baseline
     """
 
-    return tods - polynomial_trend(time_, tods, filter_params["baseline_poly_deg"])
+    deg = filter_params["deg"]
+    masks2d = filter_params.get("masks2d") # ritornata da cutted o sigmaclip
+    # TODO: gestire il caso in cui la maschera e' cutted, ossia ha tutte le righe uguali.
+    #  In particolare, possiamo utilizzare polynomial_trend e non la versione masked
+    if masks2d is None:
+        return tods - polynomial_trend(time_, tods, deg)
+    return tods - polynomial_trend_masked(time_, tods, masks2d, deg)
 
 
 @register('remove_common_mode')
 def remove_common_mode(time_: np.ndarray, tods: np.ndarray, filter_params: dict[str, Any]):
-    """
-    passiamo gia' TOD mascherata con linear_detrend
-    """
 
-    common_mode = tods.mean(axis=1, keepdims=True)
+    masks2d: np.ndarray = filter_params.get("masks2d", None)
+
+    if masks2d is not None:
+        tods_cm = tods.copy()
+        tods_cm[~masks2d] = np.nan # metto Nan dove ho la sorgente
+        common_mode = np.nanmean(tods_cm, axis=0, keepdims=True)
+        # rimozione common mode classico
+        filtered_tods = tods_cm - common_mode
+
+        return (filtered_tods, common_mode) if filter_params["return_common_mode"] else filtered_tods
+
+    common_mode = tods.mean(axis=0, keepdims=True)
     filtered_tods = tods - common_mode
 
+    # FIXME: va implementata tenendo conto di eventuali nan quando mask2d viene passata (quella ritornata da cutted o sigmaclip)
+    # EX: sigma clip
+    # i nan vengono messi sulla sorgente e questo crea problemi con la matrice di correlazione
+    # pandas ne tiene conto, ma non e' affidabile in quanto non e' un calcolo pesato per il numero di punti usato per la correlazione
+    # per ora c'e' l'equivalente di pandas qui
     if filter_params["use_correlation_matrix"]:
         # gli passo una matrice di TODS (num_feed x N)
         # ottengo la matrice num_feed x num_feed
-        corr = np.corrcoef(tods.T)
+        # di base, np.corrcoef ha rowvar = True, quindi considera
+        # come variabili le righe e non le colonne.
+        # Vogliamo cercare le correalazioni tra le TOD, quindi dobbiamo
+        # passare la matrice `tods` (N_feed x N) e non la matrice `tods.T` (N x N_feed
+        corr = np.corrcoef(tods)
+        # azzero diagonale di corr, cioe' l'auto-correlazione tra KIDs
+        np.fill_diagonal(corr, 0)
 
         # num_feed x N
         num = corr @ tods
@@ -147,11 +224,11 @@ def remove_common_mode(time_: np.ndarray, tods: np.ndarray, filter_params: dict[
         common_mode = num / denom
 
         # coeff from linear regression: b = y * x / sum(x**2) con x = common_mode
-        # e y = tods (sulla base di quanto fate con OLS)
+        # e y = tods
         x = common_mode
         y = tods
         # voglio num_feed fattori di scala
-        b = (x * y).sum(axis=1) / (tods ** 2).sum(axis=1)
+        b = (x * y).sum(axis=1) / (x ** 2).sum(axis=1)
 
         filtered_tods = tods - b[:, np.newaxis] * common_mode
 
@@ -196,11 +273,61 @@ def low_pass_filter(time_: np.ndarray, tods: np.ndarray, filter_params: dict[str
     return sosfiltfilt(sos, tods, axis=1)
 
 
-def run_filter_steps(time_: np.ndarray, tods: np.ndarray, steps: list[Step]):
+def run_filter_steps(time_: np.ndarray,
+                     tods: np.ndarray,
+                     steps: list[Step],
+                     masks2d: np.ndarray | None = None):
+
     for step in steps:
-        # funzione filtro
+        # estraggo e applico i filtri. funzione filtro
         fn = FILTERS[step.op]
+        params = dict(step.params)
+        # la TOD e' gia' filtrata con la maschera sel subscan
+        # applico tutti gli altri ma non ancora i lowpass e bandpass perche' non posso calcolare psd su dati non
+        # continui in quanto questi step sarebbero successivi ad un eventuale sigma clip che mi crea problemi di discontinuita' dei dati
+        # potrei usarli solo a valle di cutted
+        if masks2d is not None and "filter" not in step.op.lower():
+            # eseguo una copia di steps.params e inserisco masks2d
+            # Se la inserissi direttamente in step.params, poi rimarrebbe li fino a fine esecuzione
+            params['masks2d'] = masks2d
+
         # filtro la tod
-        tods = fn(time_, tods, step.params)
+        tods = fn(time_, tods, params)
 
     return tods
+
+
+def clean_noise(time_, tods_: np.ndarray, masks2d: np.ndarray, n_modes: int = 1):
+
+    # lin_func = lambda x, m, q: m*x + q
+    # X = tods_.copy()
+    # for t, tod in enumerate(X):
+    #
+    #     tm_ = np.arange(len(tod))
+    #     xdata = tm_[masks2d[t]]
+    #     ydata = tod[masks2d[t]]
+    #
+    #     popt, pcov = curve_fit(f=lin_func, xdata=xdata, ydata=ydata)
+    #     X[t] -= lin_func(tm_, *popt)
+    #
+    # return X
+
+    # X = linear_detrend(time_, tods_, {"masks2d": masks2d})
+    X = linear_detrend(None, tods_, {"masks2d": masks2d})
+
+    # centro le tod per riga
+    X -= np.nanmean(X, axis=1, keepdims=True)
+
+    # sostituisco nan con 0
+    X[np.isnan(X)] = 0
+    U, s, V = np.linalg.svd(X, full_matrices=False)
+
+    for m in range(n_modes):
+        mode_m = s[m] * np.einsum("i, j -> ij", U[:, m], V[m, :])  # (n_kids, n_samples)
+        X -= mode_m
+
+    return X
+
+
+if __name__ == "__main__":
+    ...

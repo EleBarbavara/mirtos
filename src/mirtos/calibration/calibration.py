@@ -16,39 +16,36 @@ class Calibration(ABC):
     @abstractmethod
     def calibrate(self,
                   kids: Iterable[KID],
-                  elevations: np.ndarray,
-                  mask: np.ndarray):
+                  elevations: np.ndarray):
         ...
 
 
 @dataclass
 class SkyDipCalibration(Calibration):
-
     tau_atm: float
     T_atm: float
-    mask: np.ndarray = field(default_factory=lambda: np.array([]))
+    mask: np.ndarray = field(default_factory=lambda: np.array([])) # maschera del flag track dello skydip
     z: np.ndarray = field(default_factory=lambda: np.array([]))
     airmass: np.ndarray = field(default_factory=lambda: np.array([]))
 
     def calibrate(self,
                   kids: Iterable[KID],
-                  elevations: np.ndarray,
-                  mask: np.ndarray):
+                  elevations: np.ndarray):
 
-        # istruzioni per calibrare le TOD con lo skydip
-
-        # tods = np.vstack([k.tod[mask] for k in kids])
         tods = np.vstack([k.tod for k in kids])
-        ys = np.array([k.pos.y for k in kids])
+        ys = np.array([k.pos.y for k in kids]) # y_offset
         resps = np.array([self.responsivities[k.id] for k in kids])
 
-        gains = resps[:, None] * np.exp(- self.tau_atm / np.cos(elevations[mask][None, :] - ys[:, None]))
+        z = 0.5 * np.pi - (elevations[None, :] - ys[:, None])
+        airmass = 1 / np.cos(z)
+
+        gains = resps[:, None] * np.exp(-self.tau_atm * airmass)
 
         # salviamo solamente il gain
         for kid, gain in zip(kids, gains):
             kid.gain = gain
 
-        tods[:, mask] /= gains
+        tods /= gains
 
         return gains, tods
 
@@ -57,6 +54,9 @@ class SkyDipCalibration(Calibration):
                        subscan_filename: Path,
                        T_atm: float,
                        tau_atm: float):
+
+        # facendo SkyDipCalibration.from_fits_file istanzio la classe SkyDipCalibration
+        # su cui poi richiamo calibrate
 
         with fits.open(subscan_filename) as hdul:
             dt = hdul["DATA TABLE"].data
@@ -74,7 +74,7 @@ class SkyDipCalibration(Calibration):
                 pt["chp_" + str(ch).zfill(3)][mask]
                 for ch in range(tot_channels)])
 
-            # soluzione chiusa per la regressione lineare
+            # formula per ottenere la soluzione algebrica alla regressione lineare
             x0 = sky_temp.mean()
             dx = sky_temp - x0
 
@@ -92,12 +92,10 @@ class SkyDipCalibration(Calibration):
 
 @dataclass
 class HFCalibration(Calibration):
-
     sample_freq: float
     hf_min_freq: float = 60
 
     def _compute_gain(self, tods: np.ndarray) -> tuple[np.ndarray, float, np.ndarray]:
-
         freqs, ps = periodogram(tods, fs=self.sample_freq, scaling="density")
 
         mask = freqs > self.hf_min_freq
@@ -110,10 +108,9 @@ class HFCalibration(Calibration):
 
     def calibrate(self,
                   kids: Iterable[KID],
-                  elevations: np.ndarray,
-                  mask: np.ndarray):
+                  elevations: np.ndarray):
 
-        tods = np.vstack([k.tod[mask] for k in kids])
+        tods = np.vstack([k.tod for k in kids])
         gains, _, _ = self._compute_gain(tods)
 
         # salviamo solamente il gain
@@ -123,10 +120,17 @@ class HFCalibration(Calibration):
         return gains, tods / gains[:, None]
 
 
+class NoCalibration(Calibration):
+
+    def calibrate(self, kids: Iterable[KID], elevations: np.ndarray):
+        return [], np.vstack([k.tod for k in kids])
+
+
 if __name__ == "__main__":
     tau = 0.16
     T_atm = 267
 
-    p = Path("/Volumes/Data/PycharmProjects/mirtos/data/input/20250403-023545/20250403-033037-MISTRAL-GAIN_CAL/20250402-222030-MISTRAL-GAIN_CAL_003_001.fits")
+    p = Path(
+        "/Volumes/Data/PycharmProjects/mirtos/data/input/20250403-023545/20250403-033037-MISTRAL-GAIN_CAL/20250402-222030-MISTRAL-GAIN_CAL_003_001.fits")
     sdp_003_001_cal = SkyDipCalibration.from_fits_file(p, T_atm, tau)
     print(sdp_003_001_cal)

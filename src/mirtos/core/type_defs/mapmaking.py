@@ -15,6 +15,7 @@ class MapMakingFrame(Enum):
 
 @dataclass(frozen=True)
 class MapMakingConfig:
-    """Configuration of the map making """
+    """Configuration of the map-making """
     pixel_size: u.Quantity
+    # map's resolution in pixels
     npix: list[int]

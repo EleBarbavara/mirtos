@@ -1,17 +1,14 @@
 import time
+import warnings
 
 import numpy as np
 from pathlib import Path
-from pprint import pprint
 import astropy.units as u
 from astropy.io import fits
 from datetime import datetime
-from collections import Counter
 from dataclasses import dataclass, field
 
-from memory_profiler import profile
-
-from mirtos.calibration.calibration import SkyDipCalibration
+from mirtos.calibration.calibration import SkyDipCalibration, NoCalibration
 from mirtos.core.projections import conv_radec_to_latlon
 from mirtos.core.type_defs.beam_map import BeamMap
 from mirtos.core.type_defs.config import (load_config,
@@ -24,29 +21,8 @@ from mirtos.core.type_defs.config import (load_config,
 from mirtos.core.type_defs.filters import FilteringConfig
 from mirtos.core.type_defs.focal_plane import KID, Position
 from mirtos.core.multipreprocess import process_all, Job, outputs_valid
-from mirtos.filtering.filters import run_filter_steps, get_without_radius_mask
+from mirtos.filtering.filters import get_without_radius_mask, clean_noise, run_filter_steps
 
-
-def _get_beammap(beammap_filename: Path,
-                 frame: MapMakingFrame,
-                 xOffset: np.ndarray,
-                 yOffset: np.ndarray,
-                 par_angle: np.ndarray):
-
-    if not beammap_filename.exists():
-        print(f"Beammap file {beammap_filename} not found. Using xOffset and yOffset from fits file")
-
-        xOffset = np.deg2rad(xOffset)
-        yOffset = np.deg2rad(yOffset)
-        beammap = BeamMap.from_fits_cols(lon_offset=xOffset, lat_offset=yOffset)
-
-    else:
-        beammap = BeamMap.from_dat(beammap_filename,
-                                   frame=frame,
-                                   par_angle=par_angle if frame == MapMakingFrame.RADEC else None,
-                                   valid_kids=True)
-
-    return beammap
 
 @dataclass
 class Subscan:
@@ -58,10 +34,17 @@ class Subscan:
     az: np.ndarray
     el: np.ndarray
     par_angle: np.ndarray
-    mask: np.ndarray
+    mask: np.ndarray # specifica per subscan (flag_track + Nan)
     time: np.ndarray
     kids: list[KID]
     beammap: BeamMap
+
+    # attributi che tiene traccia se il subscan sia stato processsato o meno
+    _processed: bool = field(init=False, default=False)
+
+    @property
+    def is_already_processed(self):
+        return self._processed
 
     # property mi consente di creare un attributo al volo usando gli attributi di Subscan
     @property
@@ -75,13 +58,14 @@ class Subscan:
 
     @property
     def sampling_time(self):
-        return 1 / self.sampling_frequency * u.second
+        return 1 / self.sampling_frequency
 
     @classmethod
     def from_discos_fits(cls,
                          subscan_filename: Path,
                          ctx: ScanContext):
 
+        # stem recupera il nome senza estensione
         id_subscan = int(subscan_filename.stem.split('_')[-1])
 
         # fileame = '20250402-212049-MISTRAL-A1995_RA_001_002.fits'
@@ -98,6 +82,7 @@ class Subscan:
                 if 'INTERP' in hdulist.name:
                     postfix = 'INTERP'
                     data_postfix = '_interpolated'
+                    # in quanto basta trovare un solo interp
                     break
 
             data_table = 'DATA TABLE' + postfix
@@ -136,23 +121,35 @@ class Subscan:
                 # se un valore su una colonna e' nan, tutti gli altri valori su quella colonna vengono messi a nan
                 mask &= ~np.isnan(array)
 
-            # combino la maschera che toglie i nan da quella che toglie i flag track
+            # combino la maschera che toglie i nan con quella che toglie i flag track
             mask &= flag_track_mask
+
+            # sommo gli 1 e 0 in mask. "not 0" -> True
+            if not mask.sum():
+                print(f"No valid data found in subscan `{subscan_filename.stem}`. Skipping.")
+                return None
 
             ra, dec, az, el, par_angle, time_ = arrays
 
             # creo le stringhe channel basandomi sui kid
             hdr = ["chp_" + str(i).zfill(3) for i in range(num_feed)]
 
+            if not ctx.beammap_filename.exists():
+                warnings.warn(
+                    f"Beammap file {ctx.beammap_filename} not found. Using xOffset and yOffset from fits file")
+
+                xOffset = np.deg2rad(hdul['FEED TABLE'].data['xOffset'])
+                yOffset = np.deg2rad(hdul['FEED TABLE'].data['yOffset'])
+                beammap = BeamMap.from_fits_cols(lon_offset=xOffset, lat_offset=yOffset)
+
+            else:
+                beammap = BeamMap.from_dat(ctx.beammap_filename,
+                                           frame=ctx.frame,
+                                           par_angle=par_angle[mask] if ctx.frame == MapMakingFrame.RADEC else None,
+                                           valid_kids=True)
+
             kids = []
-
-            beammap = _get_beammap(ctx.beammap_filename,
-                                   ctx.frame,
-                                   hdul[ph_table].data['lon-offset'],
-                                   hdul[ph_table]._data['lat-offset'],
-                                   par_angle[mask])
-
-            # named tuples sono tuple che emulano oggetti per cui accedo ai loro elementi con l'operatore '.'
+            # row e' named tuples: tuple che emulano oggetti per cui accedo ai loro elementi con l'operatore '.'
             for row in beammap.beam_map.itertuples():
                 kids.append(
                     KID(id=row.Index,  # indice riga beammap
@@ -165,30 +162,28 @@ class Subscan:
                         saturation_down=-1,
                         ch=row.Index,  # avendo tolto gia' i KID non validi con beammap, qui channel e' uguale a id kid
                         resonance_freq_hz=-1,
-                        tod=hdul[ph_table].data[hdr[row.Index]],  # prendo TOD senza nan corrispondenti a ra, dec
+                        tod=hdul[ph_table].data[hdr[row.Index]][mask],
                         validity=ctx.detector_validity))
 
                 # di base, la tod del kid va filtrata solo con la maschera del subscan
-                kids[-1].mask = mask[:]
+                # non usato in quanto la maschera creata e' a livello di subscan, non di kid
+                # kids[-1].mask = mask[:]
 
-            if not np.all(not arr.size for arr in [kids[0].tod, ra, dec, par_angle]):
-                return None
+        return cls(id_subscan,
+                   num_feed,
+                   obs_datetime,
+                   ra[mask],
+                   dec[mask],
+                   az[mask],
+                   el[mask],
+                   par_angle[mask],
+                   mask,
+                   time_[mask],
+                   kids,
+                   beammap)
 
-            return cls(id_subscan,
-                       num_feed,
-                       obs_datetime,
-                       ra,
-                       dec,
-                       az,
-                       el,
-                       par_angle,
-                       mask,
-                       time_,
-                       kids,
-                       beammap)
-
+    # stampa quanto occupa in memoria ogni singola riga di process
     # @profile
-    # calibration sara' l'oggetto istanziato dalla classe Calibration (modificare skydipcalibration.py)
     def process(self,
                 projection: MapMakingProjection,
                 frame: MapMakingFrame,
@@ -198,42 +193,39 @@ class Subscan:
                 cal_conf: CalibrationConfig,
                 filter_conf: FilteringConfig):
 
+        calibration = NoCalibration(np.array([]))
+
         if cal_conf.type == CalibrationType.SKYDIP:
             calibration = SkyDipCalibration.from_fits_file(
                 cal_conf.path,
                 cal_conf.T_atm,
                 cal_conf.tau)
 
-        else:
-            raise ValueError(f"Calibration type {cal_conf.type} not supported.")
-
-        # se inplace = True, modifica direttamente le tod dei KID passati
-        _, cal_tods = calibration.calibrate(self.kids, self.el, self.mask)
+        _, cal_tods = calibration.calibrate(self.kids, self.el)
 
         mask_type = "mask_without_radius"
 
         if filter_conf.radius.value:
-
             lon, lat = conv_radec_to_latlon(
                 self.ra, self.dec,
                 center_ra=ra_center, center_dec=dec_center,
                 par_angle=self.par_angle,
-                xOffset=self.beam_map.beam_map['lon_offset'],
-                yOffset=self.beam_map.beam_map['lat_offset'],
+                xOffset=self.beammap.beam_map['lon_offset'],
+                yOffset=self.beammap.beam_map['lat_offset'],
                 projection=projection, frame=frame)
 
             mask_type = "mask_with_radius"
             # da arcsec a rad
             radius = filter_conf.radius.to(u.rad).value
-            dist_from_center = np.sqrt((lon - ra_center) ** 2 + (lat - dec_center) ** 2)
-            mask = dist_from_center <= radius  # TODO: ritorna matrice (time_samples, time_samples)
-            # considero i soli istanti temporali per cui sia lon che lat sono all'interno del cerchio.
-            # Infine combino la maschera per i KIDs con la maschera del subscan
-            mask = self.mask & mask.all(axis=0)
+            dist_from_center = np.sqrt(lon ** 2 + lat ** 2)
+            masks2d = dist_from_center >= radius  # ritorna matrice (n_kid, time_samples)
+            # considero i soli istanti temporali per cui sia lon che lat sono all'esterno del cerchio.
+            # Le TOD arrivano a queso punto che sono gia' filtrate per la maschera del subscan
 
         else:
-            # calcolo la maschera senza avere il raggio definito nello yaml
-            mask = get_without_radius_mask(cal_tods, self.mask, filter_conf.mask_without_radius)
+            # ogni KID ha la sua maschera (mask2D) ma, per quanto riguarda i filtri in frequenza (lowpass, bandpass),
+            # non possiamo passare delle tod frammentate, quindi usiamo la maschera del subscan (mask)
+            masks2d = get_without_radius_mask(cal_tods, filter_conf.mask_without_radius)
 
         # definisco la lista dei filtri specifici e di quelli common
         # il cui ordine di esecuzione e' quello dello yaml.
@@ -242,14 +234,21 @@ class Subscan:
         filters = getattr(filter_conf.steps, mask_type) + filter_conf.steps.common
         # filtro le tod mascherate, a prescindere che siano mascherate
         # con o senza raggio
-        filtered_tods = run_filter_steps(self.time[mask], cal_tods[:, mask], filters)
+        filtered_tods = run_filter_steps(self.time, cal_tods, filters, masks2d=masks2d)
+        # filtered_tods = clean_noise(self.time, cal_tods, masks2d=masks2d, n_modes=0)
 
-        # la maschera ottenuta con/senza raggio serve solamente a rimuovere la baseline e non
-        # va salvata all'interno del KID proprio perche', uscurando la sorgente, non produrrebbe poi
+        # la maschera ottenuta con/senza raggio serve solamente a rimuovere la baseline. la
+        # salvo comunque all'interno del KID. oscurando la sorgente, non produce poi
         # in fase di map-making la mappa che vogliamo
-        for kid, cal_tod, filt_tod in zip(self.kids, cal_tods, filtered_tods):
+        for kid, cal_tod, filt_tod, kid_mask in zip(self.kids, cal_tods, filtered_tods, masks2d):
             kid.apply_calibration_inplace(cal_tod)
-            kid.tod[mask] = filt_tod
+
+
+            if kid_mask.any():
+                kid.tod = filt_tod
+            kid.mask = kid_mask
+
+        self._processed = True
 
 
 def _longest_common_prefix(s1, s2):
@@ -278,6 +277,7 @@ class Scan:
     ctx: ScanContext
     # se non passiamo Subscan, fiels crea una lista vuota
     subscans: list[Subscan] = field(default_factory=list)
+    _processed: bool = field(init=False, default=False)
 
     def __post_init__(self):
 
@@ -289,10 +289,12 @@ class Scan:
                 "time": s.time.shape[0],
             }
 
+            # set definisce l'insieme di valori contenuti in lens
             if len(set(lens.values())) != 1:
                 items = " ".join(f"{k}={v:>5d}" for k, v in lens.items())
                 print(f"[WARNING scan={self.id_scan}] Subscan shapes differ: [ {items}]")
 
+    # definisce come sommare due oggetti di tipo Scan
     def __add__(self, other):
 
         # serve a rimuovere l'info "RA" e "DEC" e lasciare solamente la parte in comune
@@ -356,6 +358,10 @@ class Scan:
         if not self.subscans:
             return []
 
+        if not all(sub.is_already_processed for sub in self.subscans):
+            # TODO: usare logging e non warning
+            warnings.warn(category=None, message="Not all subscans have been processed.")
+
         kids: list[KID] = []
 
         for i in range(len(self.subscans[0].kids)):
@@ -363,6 +369,7 @@ class Scan:
 
             tod = np.hstack([sub.kids[i].tod for sub in self.subscans])
             gain = np.hstack([sub.kids[i].gain for sub in self.subscans])
+            # maschera della sorgente
             mask = np.hstack([sub.kids[i].mask for sub in self.subscans])
 
             k = KID(
@@ -382,20 +389,25 @@ class Scan:
                 validity=k0.validity)
 
             k.mask = mask
+            # Questa assegnazione presuppone che uno dei seguenti casi si sia verificato:
+            # - TUTTI i subscans sono stati processati e quindi TUTTE le TODs sono calibrate
+            # - NESSUN subscan e' stato processato e quindi NESSUNA TOD e' calibrata
+            # Altrimenti, viene lanciata un'eccezione.
+            k.is_calibrated = k0.is_calibrated
 
             kids.append(k)
 
         return kids
 
+    # matrice numpy di tods per KID (tutti i subscan) creata per convenienza,
+    # anziche' fare ogni volta kid.tod scorro direttamente su tods
     @property
     def tods(self):
         return np.vstack([k.tod for k in self.kids])
 
-    @property
-    def calibrated_tods(self):
-        return np.vstack([k.calibrated_tod for k in self.kids])
-
     def process(self, cal_conf: CalibrationConfig, filter_conf: FilteringConfig):
+
+        self.ctx.beammap = self.subscans[0].beammap
 
         for subscan in self.subscans:
             subscan.process(
@@ -403,9 +415,11 @@ class Scan:
                 frame=self.ctx.frame,
                 ra_center=self.ctx.ra_center,
                 dec_center=self.ctx.dec_center,
-                beam_map_=self.ctx.beammap,
+                # beam_map_=self.ctx.beammap,
                 cal_conf=cal_conf,
                 filter_conf=filter_conf)
+
+        self._processed = True
 
     @classmethod
     def from_dir(cls,
@@ -421,7 +435,7 @@ class Scan:
 
         # ctx.beammap = beammap
         jobs = [Job(job_id, SubscanPayload(p, ctx)) for job_id, p in zip(job_ids, fits_files)]
-
+        # usiamo il multiprocess per leggere i file dei subscan
         subscans = process_all(jobs, process_subscan_file, tb_limit=5)
 
         return cls(
@@ -444,32 +458,28 @@ class SubscanPayload:
 # deve estrarre dall'hdul tutte le informazioni necessarie in quanto portarsi dietro tutto l'hdul e' pesante.
 # se ci sono informazioni che devono essere salvate si crea l'attributo relativo e ci si salvano i dati dentro
 def process_subscan_file(job: SubscanPayload) -> Subscan:
-    # in questo modo accedo alle tod dei KIDS VALIDI in quanto valid_kids e' True
-    # for i in range(len(subscan.kids)):
-    #     subscan.kids[i].tod
-
     return Subscan.from_discos_fits(job.subscan_filename, job.ctx)
 
 
 if __name__ == "__main__":
     base_path = Path(__file__).parents[4]
 
-    config_path = base_path / "configs/a1995_conf.yaml"
+    config_path = base_path / "configs/jupyter.yaml"
 
     tic = time.perf_counter()
     config = load_config(config_path)
     scan_ra = Scan.from_dir(config.paths.ra_dir, config.scan)
-    scan_dec = Scan.from_dir(config.paths.dec_dir, config.scan)
-    config.calibration.path = next(config.paths.gain_dir.iterdir())
+    # scan_dec = Scan.from_dir(config.paths.dec_dir, config.scan)
+    # next ritorna il primo elemento di un iteratore che contiene un solo elemento
+    config.calibration.path = next(config.paths.gain_dir.iterdir(), None)
     scan_ra.process(config.calibration, config.filtering)
-    scan_dec.process(config.calibration, config.filtering)
+    # scan_dec.process(config.calibration, config.filtering)
 
-    scan = scan_ra + scan_dec
-    print(f"{len(scan_ra) =}, {len(scan_dec) =}, {len(scan) =}")
+    scan = scan_ra  # + scan_dec
+    print(f"{len(scan_ra) = }, {scan_ra.tods.shape = }")
+
     #  assert len(scan) == len(scan_ra) + len(scan_dec)
 
     toc = time.perf_counter()
 
     print(f"Tempo totale: {toc - tic:.2f}s")
-
-

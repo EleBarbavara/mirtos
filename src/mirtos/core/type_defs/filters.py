@@ -5,6 +5,8 @@ from typing import Optional, Any
 
 
 class MaskWithoutRadiusMode(Enum):
+    # ogni istanza di una classe enum deve avere un valore univoco, cioe' puo'
+    # valere solo uno di questi attributi
     CUTTED = 'cutted'
     SIGMA = 'sigma'
     NONE = 'none'
@@ -23,6 +25,7 @@ class Step:
     """
     dataclasse che contiene le informazioni che stanno sotto le chiavi common, ... di a1995_conf.yaml
     """
+    # parametri di un singolo step di filtraggio (EX: mask_without_radius)
     op: str
     params: dict[str, Any]
 
@@ -36,6 +39,7 @@ class FilteringSteps:
 
 @dataclass(frozen=True)
 class FilteringDebug:
+    # nella sezione debug di filtering
     plot_cm: bool
     plot_corr_matrix: bool
 

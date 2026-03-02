@@ -1,30 +1,30 @@
 name_target: 'JUPITER'
-date_obs: "20241214" #vedere nome cartella file
+date_obs: "20250126"
 
 telescope: 'SRT'
 num_ch_map: all #numero di canali con cui fare la mappa. Se si vogliono tutti i pixel, scrivere 'all'
 
-paths: #NB: NON METTERE SLASH FINALE SUL PATH!!!!!!!
-  instrumentation: 'configs/instrument/telescope/SRT.yaml'
+paths:
+  instrumentation: 'configs/instrument/telescope/SRT.yaml' # gli dovrei passare mistral_SRT.yaml
   # Location of files (ra, dec, cal) .fits
-  datadir: "data/input/20250403-023545"
+  datadir: "data/input/20250126-231524"
   #File of the channels' responsivity
   resp:  #'/home/eleobar/MISTRAL_gen+map-maker/optical_responsivity_new_lowSNR_200mK.pkl'
 
 scan:
   flag_track: True
-  beammap_filename: '/Volumes/Data/PycharmProjects/mirtos/metadata/chp_offset_rel8_18FEB25_matteo_corrected.dat'
+  beammap_filename: "metadata/chp_offset_rel8_26JAN25_matteo.dat"
   angle_offset: 0
   projection: SIN #'SIN', 'GNOM', "EQ"
-  frame: RADEC # 'AZEL' oppure 'RADEC'
+  frame: AZEL # 'AZEL' oppure 'RADEC'
 
   detector_validity:
     upper_threshold: 7
     lower_threshold: 7
 
 map_making:
-  pixel_size: 60 arcsec
-  npix: [128, 128] # x, y
+  pixel_size: 6 arcsec
+  npix: [256, 256] # x, y
 
 calibration:
   tau: 0.16
@@ -32,18 +32,17 @@ calibration:
 
   method:
     kind: SKYDIP # or hf or None
+    # FIXME: resp dovrebbe andare tra i params
     params: {}
    # per hf passo min_freq
 
 filtering:
-  #info of box around source to mask during baseline removal and filtering
   radius: 0 arcsec #arcsec
 
   debug:
     plot_cm: False
     plot_corr_matrix: False
 
-  # per creare la maschera
   mask_without_radius:
     mode: cutted
     offset: 0.1
@@ -67,7 +66,7 @@ filtering:
     common:
       - op: remove_common_mode
         params:
-          use_correlation_matrix: False
+          use_correlation_matrix: True
           return_common_mode: False
 
 #      - op: lowpass_filter # il trattino serve per creare la lista steps che dentro contiene una lista per ogni operazione [lowpass_filter, arguments]
@@ -82,16 +81,16 @@ filtering:
 #          cuton_freq: 0
 #          cutoff_freq: 60
 #          butter_order: 4
-
-unfilt_map: 'dt' #'raw'=TODs raw are used or 'dt'=TODs detrended are used
-
-plot_maps:
-  plot_filt: True
-  plot_unfilt: True
-  plot_counts: False
-  plot_std: False
-
-#Save resulting maps in file fits
-save_map: False
-save_single_pixel_maps: False
+#
+#unfilt_map: 'dt' #'raw'=TODs raw are used or 'dt'=TODs detrended are used
+#
+#plot_maps:
+#  plot_filt: True
+#  plot_unfilt: True
+#  plot_counts: False
+#  plot_std: False
+#
+##Save resulting maps in file fits
+#save_map: False
+#save_single_pixel_maps: False
 

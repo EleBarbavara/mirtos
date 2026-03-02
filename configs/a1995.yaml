@@ -23,8 +23,8 @@ scan:
     lower_threshold: 7
 
 map_making:
-  pixel_size: 60 arcsec
-  npix: [128, 128] # x, y
+  pixel_size: 6 arcsec
+  npix: [256, 256] # x, y
 
 calibration:
   tau: 0.16
@@ -64,11 +64,11 @@ filtering:
       - op: linear_detrend
         params: { }
 
-    common:
-      - op: remove_common_mode
-        params:
-          use_correlation_matrix: False
-          return_common_mode: False
+    common: []
+#      - op: remove_common_mode
+#        params:
+#          use_correlation_matrix: False
+#          return_common_mode: False
 
 #      - op: lowpass_filter # il trattino serve per creare la lista steps che dentro contiene una lista per ogni operazione [lowpass_filter, arguments]
 #        params:
@@ -83,15 +83,15 @@ filtering:
 #          cutoff_freq: 60
 #          butter_order: 4
 
-unfilt_map: 'dt' #'raw'=TODs raw are used or 'dt'=TODs detrended are used
-
-plot_maps:
-  plot_filt: True
-  plot_unfilt: True
-  plot_counts: False
-  plot_std: False
-
-#Save resulting maps in file fits
-save_map: False
-save_single_pixel_maps: False
+#unfilt_map: 'dt' #'raw'=TODs raw are used or 'dt'=TODs detrended are used
+#
+#plot_maps:
+#  plot_filt: True
+#  plot_unfilt: True
+#  plot_counts: False
+#  plot_std: False
+#
+##Save resulting maps in file fits
+#save_map: False
+#save_single_pixel_maps: False
 

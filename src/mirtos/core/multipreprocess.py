@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from typing import Callable, Generic, Optional, TypeVar, Iterable, Sequence
 
-
+# TypeVar ritorna un nuovo oggetto "virtuale" (ancora non esiste) di tipo PayloadType
 PayloadType = TypeVar("PayloadType")   # payload (parametri specifici del dominio)
 OutputType = TypeVar("OutputType")     # output prodotto dal job
 
@@ -38,6 +38,7 @@ def run_job(
     job: Job[PayloadType],
     fn: Callable[[PayloadType], OutputType],
     *, # l'asterisco vuol dire che i parametri che seguono devono essere passati obbligatoriamente come keyword = argument
+        # tb_limit: traceback limit
     tb_limit: int = 3) -> Result[PayloadType, OutputType]:
     """
     Esegue un singolo job: chiama fn(payload) e cattura eccezioni.
