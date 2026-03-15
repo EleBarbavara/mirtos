@@ -42,7 +42,7 @@ class Subscan:
     # attributi che tiene traccia se il subscan sia stato processsato o meno
     _processed: bool = field(init=False, default=False)
 
-    @property
+    # metodo che serve solo ad accedere al valore di un attributo
     def is_already_processed(self):
         return self._processed
 
