@@ -31,7 +31,7 @@ map_making:
 calibration:
   tau: 0.2
   T_atm: 260
-  path: "data/input/20241214-204624/20241214-170426-MISTRAL-GAIN_CAL/20241214-170426-MISTRAL-GAIN_CAL_001_001.fits"
+  caldir: "data/input/20241214-204624/20241214-170426-MISTRAL-GAIN_CAL/20241214-170426-MISTRAL-GAIN_CAL_001_001.fits"
 
   method:
     kind: SKYDIP # SKYDIP # or hf or None

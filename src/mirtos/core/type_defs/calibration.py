@@ -34,7 +34,7 @@ class CalibrationConfig:
     T_atm: float
     method: dict
     type: CalibrationType = field(init=False)
-    path: Path = field(init=False)
+    caldir: Union[Path, None] = None
 
     def __post_init__(self):
         self.type = CalibrationType[self.method["kind"].upper()]

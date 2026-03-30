@@ -59,7 +59,6 @@ class PathsConfig:
             self.data_dirs = [self.datadir]
             self.scan_x_dir = self.datadir
             self.scan_y_dir = None
-            self.calibration_dir = None
             self.output /= self.datadir.name
             return
 
@@ -145,9 +144,10 @@ def load_config(path: Path) -> Config:
         Path: lambda p: Path(__file__).parents[4] / p if isinstance(p, str) else p,
     }
     conf = dacite.from_dict(Config, data, config=dacite.Config(type_hooks=type_hooks))
-    calibration_path = data.get("calibration", {}).get("path")
-    if calibration_path is not None:
-        conf.paths.calibration_dir = type_hooks[Path](calibration_path).parent
+
+    if conf.calibration.caldir is not None:
+        conf.paths.calibration_dir = conf.calibration.caldir.parent if conf.calibration.caldir.suffix else conf.calibration.caldir
+
     conf.paths.resolve_dataset_dirs()
     conf.paths.output /= conf.name_target.lower()
     conf.paths.output.mkdir(parents=True, exist_ok=True)
