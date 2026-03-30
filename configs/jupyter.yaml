@@ -29,17 +29,18 @@ map_making:
   npix: [256, 256] # x, y
 
 calibration:
-  tau: 0.16
-  T_atm: 267
+  tau: 0.2
+  T_atm: 260
+  path: "data/input/20241214-204624/20241214-170426-MISTRAL-GAIN_CAL/20241214-170426-MISTRAL-GAIN_CAL_001_001.fits"
 
   method:
-    kind: None # SKYDIP # or hf or None
+    kind: SKYDIP # SKYDIP # or hf or None
     params: {}
    # per hf passo min_freq
 
 filtering:
   #info of box around source to mask during baseline removal and filtering
-  radius: 0 arcsec
+  radius: 2 arcmin
 
   debug:
     plot_cm: False
@@ -60,10 +61,10 @@ filtering:
         params:
           deg: 4
 
-    mask_without_radius:
+    mask_without_radius: []
 
-      - op: linear_detrend
-        params: { }
+#      - op: linear_detrend
+#        params: { }
 
     common: []
 #      - op: remove_common_mode
@@ -84,13 +85,12 @@ filtering:
 #          cutoff_freq: 60
 #          butter_order: 4
 
-#plot_maps:
-#  plot_filt: True
-#  plot_unfilt: True
-#  plot_counts: False
-#  plot_std: False
+plot_maps:
+  plot_filt: True
+  plot_unfilt: False
+  plot_counts: False
+  plot_std: False
 
 #Save resulting maps in file fits
-#save_map: False
-#save_single_pixel_maps: False
-
+save_map: True
+save_single_pixel_maps: False

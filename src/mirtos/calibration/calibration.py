@@ -28,6 +28,12 @@ class SkyDipCalibration(Calibration):
     z: np.ndarray = field(default_factory=lambda: np.array([]))
     airmass: np.ndarray = field(default_factory=lambda: np.array([]))
 
+    @classmethod
+    def fit_skydip(self, sky_temp, tod):
+        pars = np.polyfit(sky_temp, tod, 1)
+
+        return pars[0]
+
     def calibrate(self,
                   kids: Iterable[KID],
                   elevations: np.ndarray):
@@ -72,12 +78,17 @@ class SkyDipCalibration(Calibration):
                 pt["chp_" + str(ch).zfill(3)][mask]
                 for ch in range(tot_channels)])
 
-            # soluzione chiusa per la regressione lineare
-            x0 = sky_temp.mean()
-            dx = sky_temp - x0
+            resps = []
+            for tod in tods:
+                resp = cls.fit_skydip(sky_temp, tod)
+                resps.append(resp)
 
-            den = (dx * dx).sum()
-            resps = (tods @ dx) / den
+            # # soluzione chiusa per la regressione lineare
+            # x0 = sky_temp.mean()
+            # dx = sky_temp - x0
+            #
+            # den = (dx * dx).sum()
+            # resps = (tods @ dx) / den
 
         return cls(
             responsivities=np.array(resps),

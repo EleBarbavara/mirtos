@@ -199,6 +199,7 @@ class Subscan:
                 cal_conf.T_atm,
                 cal_conf.tau)
 
+
         _, cal_tods = calibration.calibrate(self.kids, self.el)
 
         mask_type = "mask_without_radius"
@@ -455,7 +456,8 @@ if __name__ == "__main__":
     tic = time.perf_counter()
     config = load_config(config_path)
     scan_ra = Scan.from_dir(config.paths.scan_x_dir, config.scan)
-    config.calibration.path = next(config.paths.calibration_dir.iterdir(), None)
+    if config.calibration.path is None and config.paths.calibration_dir is not None:
+        config.calibration.path = next(config.paths.calibration_dir.iterdir(), None)
     scan_ra.process(config.calibration, config.filtering)
     # scan_dec.process(config.calibration, config.filtering)
 

@@ -20,6 +20,7 @@ class PathsConfig:
     datadir: Path
     output: Path
     resp: Union[Path, None]
+    skydip_dir: Optional[Path] = None
 
     scan_x_dir: Optional[Path] = field(init=False, default=None)  # RA oppure Az
     scan_y_dir: Optional[Path] = field(init=False, default=None)  # Dec oppure Alt
@@ -68,7 +69,10 @@ class PathsConfig:
             raise FileNotFoundError(f"No subdirectories or FITS files found in dataset directory: {self.datadir}")
 
         calibration_dirs = [path for path in subdirs if self._is_calibration_dir(path)]
-        self.calibration_dir = calibration_dirs[0] if calibration_dirs else None
+        if self.skydip_dir is not None:
+            self.calibration_dir = self.skydip_dir
+        else:
+            self.calibration_dir = calibration_dirs[0] if calibration_dirs else None
 
         self.data_dirs = [path for path in subdirs if path not in calibration_dirs]
         if not self.data_dirs:
