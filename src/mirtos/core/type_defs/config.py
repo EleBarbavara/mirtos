@@ -20,7 +20,6 @@ class PathsConfig:
     datadir: Path
     output: Path
     resp: Union[Path, None]
-    skydip_dir: Optional[Path] = None
 
     scan_x_dir: Optional[Path] = field(init=False, default=None)  # RA oppure Az
     scan_y_dir: Optional[Path] = field(init=False, default=None)  # Dec oppure Alt
@@ -69,10 +68,7 @@ class PathsConfig:
             raise FileNotFoundError(f"No subdirectories or FITS files found in dataset directory: {self.datadir}")
 
         calibration_dirs = [path for path in subdirs if self._is_calibration_dir(path)]
-        if self.skydip_dir is not None:
-            self.calibration_dir = self.skydip_dir
-        else:
-            self.calibration_dir = calibration_dirs[0] if calibration_dirs else None
+        self.calibration_dir = calibration_dirs[0] if calibration_dirs else None
 
         self.data_dirs = [path for path in subdirs if path not in calibration_dirs]
         if not self.data_dirs:
@@ -148,6 +144,9 @@ def load_config(path: Path) -> Config:
         Path: lambda p: Path(__file__).parents[4] / p if isinstance(p, str) else p,
     }
     conf = dacite.from_dict(Config, data, config=dacite.Config(type_hooks=type_hooks))
+    calibration_path = data.get("calibration", {}).get("path")
+    if calibration_path is not None:
+        conf.paths.calibration_dir = type_hooks[Path](calibration_path).parent
     conf.paths.resolve_dataset_dirs()
     conf.paths.output /= conf.name_target.lower()
     conf.paths.output.mkdir(parents=True, exist_ok=True)
