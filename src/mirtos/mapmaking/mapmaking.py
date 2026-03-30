@@ -64,12 +64,10 @@ def _do_binning(x: np.ndarray, y: np.ndarray, values: np.ndarray, bins, range_):
     The standard deviation is computed independently in each pixel from the
     first two sample moments accumulated during the binning step:
 
-    .. math::
+    s_p^2 = \\frac{\\sum x_i^2 - (\\sum x_i)^2 / N_p}{N_p - 1}
 
-       s_p^2 = \frac{\sum x_i^2 - (\sum x_i)^2 / N_p}{N_p - 1}
-
-    where :math:`N_p` is the number of samples in pixel :math:`p`. The returned
-    ``std_map`` is then :math:`s_p = \sqrt{s_p^2}`.
+    where `N_p` is the number of samples in `p`. The returned
+    ``std_map`` is `s_p = \\sqrt{s_p^2}`.
 
     Pixels with no samples are set to ``NaN`` in ``data_map`` and ``std_map``.
     Pixels with only one sample are set to ``NaN`` in ``std_map`` because the
@@ -289,26 +287,32 @@ if __name__ == "__main__":
 
         path = getattr(config.paths, scan_path)
 
-        if path is not None and path.exists():
-            scan = Scan.from_dir(path, config.scan)
-            cal_path = next(config.paths.calibration_dir.iterdir(), None) if config.paths.calibration_dir is not None else None
-            config.calibration.path = cal_path
-            scan.process(config.calibration, config.filtering)
+        if path is None or not path.exists():
+            continue
 
-            binner_mm = BinnerMapMaker(scans=[scan], pixel_size=config.map_making.pixel_size, npix=config.map_making.npix)
-            product = binner_mm.make_map()
+        fits_files = list(path.rglob("*.fits"))
+        if not fits_files:
+            continue
 
-            prefix = config_path.stem + " " + scan_path.split('_')[1]
-            to_fits(config.paths.output / (prefix + "_map.fits"), product)
+        scan = Scan.from_dir(path, config.scan)
+        cal_path = next(config.paths.calibration_dir.iterdir(), None) if config.paths.calibration_dir is not None else None
+        config.calibration.path = cal_path
+        scan.process(config.calibration, config.filtering)
 
-            fig, axes = plot_map(
-                product.data_map,
-                product.count_map,
-                product.wcs,
-                std_map=product.std_map,
-                title="",
-                colorbar_label="Phases [rad]",
-                savepath=config.paths.output / (prefix + "_map.png"),
-                dpi=600)
+        binner_mm = BinnerMapMaker(scans=[scan], pixel_size=config.map_making.pixel_size, npix=config.map_making.npix)
+        product = binner_mm.make_map()
 
-            plt.show()
+        prefix = config_path.stem + " " + scan_path.split('_')[1]
+        to_fits(config.paths.output / (prefix + "_map.fits"), product)
+
+        fig, axes = plot_map(
+            product.data_map,
+            product.count_map,
+            product.wcs,
+            std_map=product.std_map,
+            title="",
+            colorbar_label="Phases [rad]",
+            savepath=config.paths.output / (prefix + "_map.png"),
+            dpi=600)
+
+        plt.show()
