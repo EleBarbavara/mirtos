@@ -2,7 +2,7 @@ name_target: 'JUPITER'
 date_obs: "20241214" #vedere nome cartella file
 
 telescope: 'SRT'
-pixel_size: 60 #arcsec
+pixel_size: 6 #arcsec
 num_ch_map: 'all' #numero di canali con cui fare la mappa. Se si vogliono tutti i pixel, scrivere 'all'
 
 paths: #NB: NON METTERE SLASH FINALE SUL PATH!!!!!!!
