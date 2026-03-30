@@ -68,7 +68,8 @@ class PathsConfig:
             raise FileNotFoundError(f"No subdirectories or FITS files found in dataset directory: {self.datadir}")
 
         calibration_dirs = [path for path in subdirs if self._is_calibration_dir(path)]
-        self.calibration_dir = calibration_dirs[0] if calibration_dirs else None
+        if self.calibration_dir is None:
+            self.calibration_dir = calibration_dirs[0] if calibration_dirs else None
 
         self.data_dirs = [path for path in subdirs if path not in calibration_dirs]
         if not self.data_dirs:
