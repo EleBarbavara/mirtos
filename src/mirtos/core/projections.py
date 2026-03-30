@@ -38,8 +38,12 @@ def proj_radec_to_xy(ra, dec, ra0, dec0, projection: MapMakingProjection):
 
 
 def conv_xy_to_latlon(x, y, par_angle, xOffset, yOffset, center_ra, center_dec, frame: MapMakingFrame):
+
     if frame == MapMakingFrame.RADEC:
         # broadcast offsets (num_feed,1) contro angle (1,N)
+        xOffset = np.asarray(xOffset)
+        yOffset = np.asarray(yOffset)
+
         xO = xOffset[:, None]
         yO = yOffset[:, None]
         theta = par_angle[None, :]
@@ -52,6 +56,9 @@ def conv_xy_to_latlon(x, y, par_angle, xOffset, yOffset, center_ra, center_dec, 
 
     elif frame == MapMakingFrame.AZEL:
         x_rot, y_rot = rot(x - center_ra, y - center_dec, par_angle)  # (N,)
+
+        xOffset = np.asarray(xOffset)
+        yOffset = np.asarray(yOffset)
 
         xO = xOffset[:, None]  # (num_feed,1)
         yO = yOffset[:, None]  # (num_feed,1)
