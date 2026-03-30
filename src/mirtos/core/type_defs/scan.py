@@ -231,9 +231,9 @@ class Subscan:
         # # filtro le tod mascherate, a prescindere che siano mascherate
         # # con o senza raggio
 
-        #filtered_tods = run_filter_steps(self.time, cal_tods, filters, masks2d=masks2d)
+        filtered_tods = run_filter_steps(self.time, cal_tods, filters, masks2d=masks2d)
 
-        filtered_tods = clean_noise(self.time, cal_tods, masks2d=masks2d, n_modes=0)
+        # filtered_tods = clean_noise(self.time, cal_tods, masks2d=masks2d, n_modes=0)
 
         for kid, cal_tod, filt_tod, kid_mask in zip(self.kids, cal_tods, filtered_tods, masks2d):
             kid.apply_calibration_inplace(cal_tod)
