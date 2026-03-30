@@ -23,7 +23,6 @@ class BeamMap:
     # anziche' in questo modo:
     # bm = BeamMap(pd.DataFrame()) (ovvero passargli un dataframe)
     @classmethod
-    # self e' per gli oggetti, cls e' per le classi
     def from_dat(cls, filename: Path,
                  comments: str = '#',
                  valid_kids: bool = False,
@@ -38,9 +37,7 @@ class BeamMap:
         df['id'] = df['id'].astype(int)
         # ~ in modo che 0 True e 1 False
         df['flag'] = ~df['flag'].astype(bool)
-        # setto l'indice sulla colonna id del file di beammap.
-        # di base la colonna id e' una riga - un indice
-        # io uso come id la colonna id dei kid
+        # setto l'indice sulla colonna id del file di beammap
         df.set_index('id', inplace=True)
 
         df['lon_offset'] = np.deg2rad(df['lon_offset'])
@@ -67,6 +64,5 @@ class BeamMap:
 if __name__ == "__main__":
     beam_map_file = Path('/Volumes/Data/PycharmProjects/mirtos/metadata/chp_offset_rel8_18FEB25_matteo_corrected.dat')
     bm = BeamMap.from_dat(beam_map_file)
-    # numero kid non validi
     print(f"{len(bm.beam_map) - len(bm.beam_map[bm.beam_map['flag']]) = }")
     print(bm.beam_map)

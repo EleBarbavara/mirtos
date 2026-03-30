@@ -10,8 +10,6 @@ class Position:
     y: float
 
     def __cmp__(self, other):
-        # defnisce come comparare due oggetti di tipo Position
-        # per fare plot del piano focale
         return self.x == other.x and self.y == other.y
 
     @property
@@ -22,7 +20,6 @@ class Position:
     @property
     def theta(self):
         # ordinamento polare (pattern angolari)
-        # spirale attorno al centro con arctan2
         return np.arctan2(self.y, self.x)
 
 
@@ -41,13 +38,12 @@ class Detector(ABC):
     # se init fosse True, l'attributo verrebbe creato quando istanzio la classe
     # ma questo genererebbe un problema quando la classe KID eredita Detector
     # perche' all'inizio della classe KID ho attributi obbligatori
-    mask: np.ndarray = field(init=False, default_factory=lambda: np.array([]))
+    mask: np.ndarray = field(init=False, default_factory=lambda: np.array([]))  # opzionale
 
     _is_calibrated: bool = field(init=False, default=False)
 
     def __post_init__(self):
         # se non e' stato passata alcuna maschera, la creo con tutti i valori True
-        # mask e' la maschera per KID, ovvero quella with/without radius
         if not self.mask.size:
             self.mask = np.ones_like(self.tod, dtype=bool)
 
@@ -64,7 +60,6 @@ class Detector(ABC):
 
 @dataclass
 class KID(Detector):
-
     @property
     def is_calibrated(self):
         return self._is_calibrated
@@ -94,7 +89,6 @@ class KID(Detector):
         self.tod = cal_tod
         self._is_calibrated = True
 
-    # permette di settare un attributo privato ad un dato valore
     @is_calibrated.setter
     def is_calibrated(self, value):
         self._is_calibrated = value

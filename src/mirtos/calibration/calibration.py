@@ -24,7 +24,7 @@ class Calibration(ABC):
 class SkyDipCalibration(Calibration):
     tau_atm: float
     T_atm: float
-    mask: np.ndarray = field(default_factory=lambda: np.array([])) # maschera del flag track dello skydip
+    mask: np.ndarray = field(default_factory=lambda: np.array([]))
     z: np.ndarray = field(default_factory=lambda: np.array([]))
     airmass: np.ndarray = field(default_factory=lambda: np.array([]))
 
@@ -33,10 +33,11 @@ class SkyDipCalibration(Calibration):
                   elevations: np.ndarray):
 
         tods = np.vstack([k.tod for k in kids])
-        ys = np.array([k.pos.y for k in kids]) # y_offset
+        ys = np.array([k.pos.y for k in kids])
         resps = np.array([self.responsivities[k.id] for k in kids])
 
         z = 0.5 * np.pi - (elevations[None, :] - ys[:, None])
+        # FIXME: verificare se e' necessario deg2rad
         airmass = 1 / np.cos(z)
 
         gains = resps[:, None] * np.exp(-self.tau_atm * airmass)
@@ -55,9 +56,6 @@ class SkyDipCalibration(Calibration):
                        T_atm: float,
                        tau_atm: float):
 
-        # facendo SkyDipCalibration.from_fits_file istanzio la classe SkyDipCalibration
-        # su cui poi richiamo calibrate
-
         with fits.open(subscan_filename) as hdul:
             dt = hdul["DATA TABLE"].data
             pt = hdul["PH TABLE"].data
@@ -74,7 +72,7 @@ class SkyDipCalibration(Calibration):
                 pt["chp_" + str(ch).zfill(3)][mask]
                 for ch in range(tot_channels)])
 
-            # formula per ottenere la soluzione algebrica alla regressione lineare
+            # soluzione chiusa per la regressione lineare
             x0 = sky_temp.mean()
             dx = sky_temp - x0
 

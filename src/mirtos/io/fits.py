@@ -1,39 +1,52 @@
-# codice per leggere i fits
-# seguire esempio pandas
-import os
-import glob
+from pathlib import Path
+from typing import Protocol
+
 import numpy as np
 from astropy.io import fits
 
+# duck typing
+class MapProductLike(Protocol):
+    data_map: np.ndarray
+    count_map: np.ndarray
+    std_map: np.ndarray | None
+    wcs: object
+    meta: dict[str, str | float | int]
 
-def to_fits(file_path: str):
-    ...
 
-# i config che usiamo servono qui o potrebbero servire in scan.py?
-# ritorna solo l'hdul mentre  process_subscan_file ritorna solo le cose che servono dell'hdul
-def load_subscan_fits(filename):
+def to_fits(file_path: str | Path, product: MapProductLike) -> Path:
+    file_path = Path(file_path)
+    file_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # problema: chiuederebbe in automatico il fits
-    with fits.open(filename) as hdul:
-        return hdul
+    primary_header = fits.Header()
+    for key, value in getattr(product, "meta", {}).items():
+        if value is None:
+            continue
+        primary_header[str(key).upper()[:8]] = value
 
-def read_tod_fits(dir_path: str):
-    """
-    Metdodo che ritorna le tod. in un altro metodo creiamo lo scan in un'altra modulo
-    Args:
-        dir_path:
+    header_wcs = product.wcs.to_header()
 
-    Returns:
+    hdus = [
+        fits.PrimaryHDU(header=primary_header),
+        fits.ImageHDU(
+            data=np.asarray(product.data_map, dtype=float),
+            header=header_wcs,
+            name="MAP",
+        ),
+        fits.ImageHDU(
+            data=np.asarray(product.count_map, dtype=float),
+            header=header_wcs,
+            name="COUNTS",
+        ),
+    ]
 
-    """
+    if getattr(product, "std_map", None) is not None:
+        hdus.append(
+            fits.ImageHDU(
+                data=np.asarray(product.std_map, dtype=float),
+                header=header_wcs,
+                name="STD",
+            )
+        )
 
-    # lista di file.fits per ogni TOD
-    files = glob.glob(os.path.join(dir_path, '*.fits'))
-    fits_data = []
-
-    for file in files:
-        with fits.open(file) as hdul:
-            fits_data.append(hdul[1].data)
-
-def check_number_channel():
-    pass
+    fits.HDUList(hdus).writeto(file_path, overwrite=True)
+    return file_path
