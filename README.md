@@ -44,6 +44,6 @@ To run a basic version of mirtos, go in the mapmaking folder and run the followi
 cd src/mirtos/mapmaking
 python mapmaking.py path/to/config.yaml
 ```
-
+**WARNING**: if you are a user and editor of this repo, we advise to not put your config file in the configs folder, but to store it locally on you computer. The same applies to data used to make maps. 
 
 
