@@ -8,7 +8,7 @@ paths:
   instrumentation: 'configs/instrument/telescope/SRT.yaml'
   # Location of files (ra, dec, cal) .fits
   # datadir: "data/input/base_test"
-  datadir: "data/input/20241214-204624"
+  datadir: "/Users/eleonora/Desktop/mistral/OBS/SRT-dicembre/20241214-204624-MISTRAL-JUPITER_TY-2.5_TZ-7"
   output: "data/output"
   #File of the channels' responsivity
   resp:  #'/home/eleobar/MISTRAL_gen+map-maker/optical_responsivity_new_lowSNR_200mK.pkl'
@@ -31,7 +31,7 @@ map_making:
 calibration:
   tau: 0.2
   T_atm: 260
-  caldir: "data/input/20241214-204624/20241214-170426-MISTRAL-GAIN_CAL/20241214-170426-MISTRAL-GAIN_CAL_001_001.fits"
+  caldir: "/Users/eleonora/Desktop/mistral/OBS/SRT-dicembre/20241214-170426-MISTRAL-GAIN_CAL/20241214-170426-MISTRAL-GAIN_CAL_002_001.fits"
 
   method:
     kind: SKYDIP # SKYDIP # or hf or None
