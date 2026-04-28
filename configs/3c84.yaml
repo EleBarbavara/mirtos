@@ -1,0 +1,96 @@
+name_target: 'JUPITER'
+date_obs: "20250126"
+
+telescope: 'SRT'
+num_ch_map: all #numero di canali con cui fare la mappa. Se si vogliono tutti i pixel, scrivere 'all'
+
+paths:
+  instrumentation: 'configs/instrument/telescope/SRT.yaml' # gli dovrei passare mistral_SRT.yaml
+  # Location of files (ra, dec, cal) .fits
+  datadir: "data/input/20250126-231524"
+  #File of the channels' responsivity
+  resp:  #'/home/eleobar/MISTRAL_gen+map-maker/optical_responsivity_new_lowSNR_200mK.pkl'
+
+scan:
+  flag_track: True
+  beammap_filename: "metadata/chp_offset_rel8_26JAN25_matteo.dat"
+  angle_offset: 0
+  projection: SIN #'SIN', 'GNOM', "EQ"
+  frame: AZEL # 'AZEL' oppure 'RADEC'
+
+  detector_validity:
+    upper_threshold: 7
+    lower_threshold: 7
+
+map_making:
+  pixel_size: 6 arcsec
+  npix: [256, 256] # x, y
+
+calibration:
+  tau: 0.16
+  T_atm: 267
+
+  method:
+    kind: SKYDIP # or hf or None
+    # FIXME: resp dovrebbe andare tra i params
+    params: {}
+   # per hf passo min_freq
+
+filtering:
+  radius: 0 arcsec #arcsec
+
+  debug:
+    plot_cm: False
+    plot_corr_matrix: False
+
+  mask_without_radius:
+    mode: cutted
+    offset: 0.1
+    sigma: 6
+    maxiters: 10
+
+
+  steps:
+
+    mask_with_radius:
+
+      - op: remove_baseline
+        params:
+          baseline_poly_deg: 4
+
+    mask_without_radius:
+
+      - op: linear_detrend
+        params: { }
+
+    common:
+      - op: remove_common_mode
+        params:
+          use_correlation_matrix: True
+          return_common_mode: False
+
+#      - op: lowpass_filter # il trattino serve per creare la lista steps che dentro contiene una lista per ogni operazione [lowpass_filter, arguments]
+#        params:
+#          btype: 'lowpass'
+#          cutoff_freq: 60
+#          butter_order: 4
+#
+#      - op: bandpass_filter
+#        params:
+#          btype: 'bandpass'
+#          cuton_freq: 0
+#          cutoff_freq: 60
+#          butter_order: 4
+#
+#unfilt_map: 'dt' #'raw'=TODs raw are used or 'dt'=TODs detrended are used
+#
+#plot_maps:
+#  plot_filt: True
+#  plot_unfilt: True
+#  plot_counts: False
+#  plot_std: False
+#
+##Save resulting maps in file fits
+#save_map: False
+#save_single_pixel_maps: False
+
