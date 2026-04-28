@@ -6,6 +6,11 @@
 *.fits
 metadata/
 
+#config file
+config/
+!configs/instrument
+!config/example.py
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

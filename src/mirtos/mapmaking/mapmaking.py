@@ -10,6 +10,7 @@ from scipy.stats import binned_statistic_2d
 
 from mirtos.core.type_defs.scan import Scan
 from mirtos.core.projections import conv_radec_to_latlon
+from mirtos.core.type_defs.calibration import CalibrationType
 from mirtos.core.type_defs.config import MapMakingFrame, load_config
 from mirtos.plotting.map import plot_map
 from mirtos.io.fits import to_fits
@@ -283,6 +284,8 @@ if __name__ == "__main__":
         raise ValueError(f"Config file `{config_path}` does not exist or is not a YAML file")
 
     config = load_config(config_path)
+    print('Loaded configuration file: ', config_path)
+
     for scan_path in ["scan_x_dir", "scan_y_dir"]:
 
         path = getattr(config.paths, scan_path)
@@ -297,8 +300,13 @@ if __name__ == "__main__":
         scan = Scan.from_dir(path, config.scan)
         cal_path = next(config.paths.calibration_dir.iterdir(), None) if config.paths.calibration_dir is not None else None
         config.calibration.path = cal_path
+        print('Processing TODs.')
+        if config.calibration.type == CalibrationType.SKYDIP:
+            print('   Calibrating the TODs with skydip.')
+        print('   Filtering the TODs.')
         scan.process(config.calibration, config.filtering)
 
+        print('Making map.')
         binner_mm = BinnerMapMaker(scans=[scan], pixel_size=config.map_making.pixel_size, npix=config.map_making.npix)
         product = binner_mm.make_map()
 
