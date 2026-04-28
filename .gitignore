@@ -5,6 +5,7 @@
 # map files
 *.fits
 metadata/
+data/
 
 #config file
 **/config/*.yaml
