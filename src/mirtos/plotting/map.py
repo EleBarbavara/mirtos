@@ -5,12 +5,78 @@ import numpy as np
 from astropy.wcs import WCS
 import matplotlib.pyplot as plt
 from matplotlib.patches import Circle
+from mirtos.core.type_defs.calibration import CalibrationType
+from mirtos.core.type_defs.mapmaking import MapMakingFrame
 
 MarkerWorld = tuple[float, float, str]
 MarkerPixel = tuple[float, float, str]
 
 
-def plot_map(
+def plot_map(mapp, cfg, namefile='', name='', save_map=False, wcs=None, beam=None, halo=None, vmax=None): 
+    if wcs==None:
+        #image = np.ones(num_timestep)
+        fig, ax = plt.subplots()
+        if vmax==None:
+            im = ax.imshow(mapp, cmap='viridis', origin='lower') 
+        else:
+            im = ax.imshow(mapp, cmap='viridis', origin='lower', vmax=vmax)
+        if beam!= None:
+            beam[0].plot(color='white')
+            ax.text(beam[1][0], beam[1][1]+6, f'beam \n 12"', c='white', fontsize='small', horizontalalignment='center')
+        if halo!= None:
+            halo.plot(color='white')
+            #ax.text(beam[1][0], beam[1][1]+6, f'beam \n 12"', c='white', fontsize='small', horizontalalignment='center')
+        
+        #ax.set_title(f'{name}')
+        ax.set_xlabel('x [pixel]')
+        ax.set_ylabel('y [pixel]')
+        cbar = plt.colorbar(im) #, cax = cbaxes)
+        if cfg.calibration.type == CalibrationType.SKYDIP:
+                cbar_label='Kelvin [K]'
+        else:
+                cbar_label='Phase [rad]'
+        cbar.set_label(label=cbar_label, size=16)
+        cbar.ax.tick_params(labelsize=16)
+        ax.tick_params(axis='both', labelsize=16)
+        plt.show()
+        #plt.savefig(namefile)
+        #plt.close()
+        return ax
+    else:
+        #image = np.ones(num_timestep)
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection=wcs)
+        if vmax==None:
+            im = plt.imshow(mapp, cmap='viridis', origin='lower') 
+        else:
+            im = plt.imshow(mapp, cmap='viridis', origin='lower', vmax=vmax)
+        if beam!= None:
+            beam[0].plot(color='white')
+            ax.text(beam[1][0], beam[1][1]+6, f'beam \n 12"', c='white', fontsize='small', horizontalalignment='center')
+        if halo!= None:
+            halo.plot(color='white')
+        #ax.set_title(f'{str(name)}')
+        if cfg.scan.frame == MapMakingFrame.AZEL:
+            ax.set_xlabel('Azimuth', fontsize=18, color='black')
+            ax.set_ylabel('Elevation', fontsize=18, color='black')
+        elif cfg.scan.frame == MapMakingFrame.RADEC:
+            ax.set_xlabel('RA', fontsize=18, color='black')
+            ax.set_ylabel('Dec', fontsize=18, color='black')
+        #cbaxes = fig.add_axes([0.85, 0.12, 0.03, 0.75])
+        cbar = plt.colorbar(im) #, cax = cbaxes)
+        if cfg.calibration.type == CalibrationType.SKYDIP:
+                cbar_label='Kelvin [K]'
+        else:
+                cbar_label='Phase[rad]'
+        cbar.set_label(label=cbar_label, size=16)
+        cbar.ax.tick_params(labelsize=16)
+        ax.tick_params(axis='both', labelsize=16)
+        plt.show()
+        #plt.savefig(namefile)
+        #plt.close()
+        return fig, ax
+
+def plot_tris_maps(
         data_map: np.ndarray,
         count_map: np.ndarray,
         projection: WCS,
