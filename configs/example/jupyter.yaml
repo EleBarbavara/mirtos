@@ -56,13 +56,24 @@ filtering:
   steps:
 
     mask_with_radius:
-
       - op: remove_baseline
         params:
           deg: 4
+      
+      - op: band_pass_filter
+        params:
+          btype: 'bandpass'
+          cuton_freq: 0.5
+          cutoff_freq: 30
+          butter_order: 4
+      
+      # - op: low_pass_filter # il trattino serve per creare la lista steps che dentro contiene una lista per ogni operazione [lowpass_filter, arguments]
+      #   params:
+      #    btype: 'lowpass'
+      #    cutoff_freq: 60
+      #    butter_order: 4
 
     mask_without_radius: []
-
 #      - op: linear_detrend
 #        params: { }
 
@@ -78,12 +89,7 @@ filtering:
 #          cutoff_freq: 60
 #          butter_order: 4
 #
-#      - op: bandpass_filter
-#        params:
-#          btype: 'bandpass'
-#          cuton_freq: 0
-#          cutoff_freq: 60
-#          butter_order: 4
+
 
 plot_maps:
   plot_filt: True

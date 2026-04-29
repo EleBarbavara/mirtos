@@ -4,8 +4,13 @@ import numpy as np
 from astropy.stats import sigma_clip
 from scipy.optimize import curve_fit
 from scipy.signal import butter, sosfiltfilt
+import sys
+from pathlib import Path
+from matplotlib import pyplot as plt
 
 from mirtos.core.type_defs.filters import Step, MaskWithoutRadius, MaskWithoutRadiusMode
+from mirtos.core.type_defs.scan import Scan
+from mirtos.core.type_defs.config import load_config
 
 # callable indica che filter_fn e' di tipo funzione
 # np.ndarray: tod da filtrare
@@ -219,16 +224,16 @@ def remove_common_mode(time_: np.ndarray, tods: np.ndarray, filter_params: dict[
 
 
 def apply_butterworth(time_: np.ndarray, filter_params: dict[str, Any]):
-    sampling_frequency = 1 / (time_[1] - time_[0])
+    sampling_frequency = 244.140625
     nyquist_frequency = 0.5 * sampling_frequency
     norm_cutoff_freq = filter_params["cutoff_freq"] / nyquist_frequency
 
-    wn = [norm_cutoff_freq]
+    wn = np.copy(norm_cutoff_freq)
 
     if filter_params["btype"] == 'bandpass':
         norm_cuton_freq = filter_params["cuton_freq"] / nyquist_frequency
         # inseriramo nella posizione 0
-        wn.insert(0, norm_cuton_freq)
+        wn= [norm_cuton_freq, norm_cutoff_freq]
 
     return butter(filter_params["butter_order"],
                   wn,
@@ -244,16 +249,23 @@ def band_pass_filter(time_: np.ndarray, tods: np.ndarray, filter_params: dict[st
     """
 
     sos = apply_butterworth(time_, filter_params)
-
     # sosfiltfilt e' un filtro piu' stabile di filtfilt: tagli sulle frequenze fatti meglio, genera meno artifici
-    return sosfiltfilt(sos, tods, axis=1)
+    filt_tods = []
+    for i in range(len(tods)):
+        filt_tods.append(sosfiltfilt(sos, tods[i])) #axis=1
+
+    return filt_tods
 
 
 @register('low_pass_filter')
 def low_pass_filter(time_: np.ndarray, tods: np.ndarray, filter_params: dict[str, Any]):
     sos = apply_butterworth(time_, filter_params)
+    
+    filt_tods = []
+    for i in range(len(tods)):
+        filt_tods.append(sosfiltfilt(sos, tods[i])) #axis=1
 
-    return sosfiltfilt(sos, tods, axis=1)
+    return filt_tods
 
 
 def run_filter_steps(time_: np.ndarray,
@@ -308,4 +320,41 @@ def clean_noise(time_, tods_: np.ndarray, masks2d: np.ndarray, n_modes: int = 1)
 
 
 if __name__ == "__main__":
-    ...
+    base_path = Path(__file__).parents[3]
+    config_path = base_path / "configs" / sys.argv[1]
+
+    if not config_path.exists() or config_path.suffix != ".yaml":
+        raise ValueError(f"Config file `{config_path}` does not exist or is not a YAML file")
+
+    config = load_config(config_path)
+    print('Loaded configuration file: ', config_path)
+
+    for scan_path in ["scan_x_dir", "scan_y_dir"]:
+
+        path = getattr(config.paths, scan_path)
+
+        if path is None or not path.exists():
+            continue
+
+        fits_files = list(path.rglob("*.fits"))
+        if not fits_files:
+            continue
+
+        scan = Scan.from_dir(path, config.scan)
+        cal_path = next(config.paths.calibration_dir.iterdir(), None) if config.paths.calibration_dir is not None else None
+        config.calibration.path = cal_path
+        
+        #scan.process(config.calibration, config.filtering)
+
+        sub = scan.subscans[30]
+        print(sub.kids[0].tod)
+
+        nyquist_frequency = 0.5 * 244.140625
+        norm_cutoff_freq = 60 / nyquist_frequency
+
+        sos = butter(4, norm_cutoff_freq, 'lowpass', output='sos')
+        y = sosfiltfilt(sos, sub.kids[0].tod)
+        plt.plot(sub.kids[0].tod)
+        plt.plot(y)
+        plt.show()
+        
