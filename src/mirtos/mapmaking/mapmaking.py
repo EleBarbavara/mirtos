@@ -13,7 +13,7 @@ from mirtos.core.projections import conv_radec_to_latlon
 from mirtos.core.type_defs.calibration import CalibrationType
 from mirtos.core.type_defs.config import MapMakingFrame, load_config
 from mirtos.core.type_defs.mapmaking import MapMakingProjection
-from mirtos.plotting.map import plot_map
+from mirtos.plotting.map import plot_map, plot_tris_maps
 from mirtos.io.fits import to_fits
 
 
@@ -315,6 +315,7 @@ if __name__ == "__main__":
         print('   Filtering the TODs.')
         scan.process(config.calibration, config.filtering)
 
+        
         print('Making map.')
         binner_mm = BinnerMapMaker(scans=[scan], pixel_size=config.map_making.pixel_size, npix=config.map_making.npix)
         product = binner_mm.make_map()
@@ -339,5 +340,5 @@ if __name__ == "__main__":
                            save_map=False, 
                            wcs=product.wcs
                            )
-
+        
         plt.show()

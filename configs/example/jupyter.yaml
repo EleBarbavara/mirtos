@@ -8,7 +8,7 @@ paths:
   instrumentation: 'configs/instrument/telescope/SRT.yaml'
   # Location of files (ra, dec, cal) .fits
   # datadir: "data/input/base_test"
-  datadir: "/Users/eleonora/Desktop/mistral/OBS/SRT-dicembre/20241214-204624-MISTRAL-JUPITER_TY-2.5_TZ-7"
+  datadir: "/Users/eleonora/Desktop/mistral/OBS/SRT-dicembre/20241214-235843-MISTRAL-3C84_AZ"
   output: "data/output"
   #File of the channels' responsivity
   resp:  #'/home/eleobar/MISTRAL_gen+map-maker/optical_responsivity_new_lowSNR_200mK.pkl'
@@ -40,7 +40,7 @@ calibration:
 
 filtering:
   #info of box around source to mask during baseline removal and filtering
-  radius: 2 arcmin
+  radius: 1 arcmin
 
   debug:
     plot_cm: False
@@ -55,18 +55,23 @@ filtering:
 
   steps:
 
-    mask_with_radius:
+    mask_with_radius: 
       - op: remove_baseline
         params:
           deg: 4
-      
-      - op: band_pass_filter
+
+      - op: remove_common_mode
         params:
-          btype: 'bandpass'
-          cuton_freq: 0.5
-          cutoff_freq: 30
-          butter_order: 4
+          use_correlation_matrix: True #to have custom common mode for each detector
+          return_common_mode: False
       
+      # - op: band_pass_filter
+      #   params:
+      #     btype: 'bandpass'
+      #     cuton_freq: 0.05
+      #     cutoff_freq: 30
+      #     butter_order: 3
+  
       # - op: low_pass_filter # il trattino serve per creare la lista steps che dentro contiene una lista per ogni operazione [lowpass_filter, arguments]
       #   params:
       #    btype: 'lowpass'
@@ -74,8 +79,16 @@ filtering:
       #    butter_order: 4
 
     mask_without_radius: []
-#      - op: linear_detrend
+#     - op: linear_detrend
 #        params: { }
+      # - op: remove_baseline
+      #   params:
+      #     deg: 4
+      
+      # - op: remove_common_mode
+      #   params:
+      #     use_correlation_matrix: True #to have custom common mode for each detector
+      #     return_common_mode: False
 
     common: []
 #      - op: remove_common_mode
