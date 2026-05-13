@@ -391,7 +391,6 @@ class Scan:
         return np.vstack([k.tod for k in self.kids])
 
     def process(self, cal_conf: CalibrationConfig, filter_conf: FilteringConfig):
-
         self.ctx.beammap = self.subscans[0].beammap
         
         for subscan in self.subscans:

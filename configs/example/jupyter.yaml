@@ -8,7 +8,7 @@ paths:
   instrumentation: 'configs/instrument/telescope/SRT.yaml'
   # Location of files (ra, dec, cal) .fits
   # datadir: "data/input/base_test"
-  datadir: "/Users/eleonora/Desktop/mistral/OBS/SRT-dicembre/20241214-235843-MISTRAL-3C84_AZ"
+  datadir: "/Users/eleonora/Desktop/mistral/OBS/SRT-dicembre/20241214-211411-MISTRAL-JUPITER_TY-2.5_TZ-7"
   output: "data/output"
   #File of the channels' responsivity
   resp:  #'/home/eleobar/MISTRAL_gen+map-maker/optical_responsivity_new_lowSNR_200mK.pkl'
