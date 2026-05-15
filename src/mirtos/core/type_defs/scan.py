@@ -383,9 +383,8 @@ class Scan:
         return np.vstack([k.tod for k in self.kids])
 
     def process(self, cal_conf: CalibrationConfig, filter_conf: FilteringConfig):
-
         self.ctx.beammap = self.subscans[0].beammap
-
+        
         for subscan in self.subscans:
             subscan.process(
                 projection=self.ctx.projection,
@@ -395,8 +394,11 @@ class Scan:
                 # beam_map_=self.ctx.beammap,
                 cal_conf=cal_conf,
                 filter_conf=filter_conf)
-
+        
         self._processed = True
+        print('Binner mode = ', str(self.ctx.frame).split('.')[1])
+        print('Projection = ', str(self.ctx.projection).split('.')[1])
+
 
     @classmethod
     def from_dir(cls,
@@ -413,7 +415,7 @@ class Scan:
         # ctx.beammap = beammap
         jobs = [Job(job_id, SubscanPayload(p, ctx)) for job_id, p in zip(job_ids, fits_files)]
         subscans = process_all(jobs, process_subscan_file, tb_limit=5)
-
+        print('Total number of subscan: ', len(subscans))
         return cls(
             id_scan=scan_dir_.name,
             ctx=ctx,

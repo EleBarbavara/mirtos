@@ -143,6 +143,7 @@ def load_config(path: Path) -> Config:
         # CalibrationType: lambda s: CalibrationType[str(s).upper()],
         Path: lambda p: Path(__file__).parents[4] / p if isinstance(p, str) else p,
     }
+    
     conf = dacite.from_dict(Config, data, config=dacite.Config(type_hooks=type_hooks))
 
     if conf.calibration.caldir is not None:

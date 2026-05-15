@@ -5,9 +5,14 @@
 # map files
 *.fits
 metadata/
+data/
+
+#config file
+**/config/*.yaml
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
+.DS_Store
 *.py[codz]
 *$py.class
 

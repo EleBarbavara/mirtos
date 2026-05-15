@@ -10,8 +10,10 @@ from scipy.stats import binned_statistic_2d
 
 from mirtos.core.type_defs.scan import Scan
 from mirtos.core.projections import conv_radec_to_latlon
+from mirtos.core.type_defs.calibration import CalibrationType
 from mirtos.core.type_defs.config import MapMakingFrame, load_config
-from mirtos.plotting.map import plot_map
+from mirtos.core.type_defs.mapmaking import MapMakingProjection
+from mirtos.plotting.map import plot_map, plot_tris_maps
 from mirtos.io.fits import to_fits
 
 
@@ -185,14 +187,22 @@ class BinnerMapMaker(MapMaker):
 
     def _make_wcs(self, ctype1: str, ctype2: str, crval1: float, crval2: float,
                   npix_x: int, npix_y: int, pixel_size_deg: float) -> WCS:
+        if self.projection == MapMakingProjection.SIN:
+            proj = 'SIN'
+        elif self.projection == MapMakingProjection.GNOM:
+            proj = 'GNOM'
+        elif self.projection == MapMakingProjection.EQ:
+            proj = 'EQ'
+        else:
+            ValueError('WCS projection not valid. Enter a valid projection in config file.')
         wcs_dict = {
-            "CTYPE1": f"{ctype1}{self.projection}",
+            "CTYPE1": f"{ctype1}{proj}",
             "CUNIT1": "deg",
             "CDELT1": -pixel_size_deg,
             "CRPIX1": (npix_x + 1) / 2,
             "CRVAL1": crval1,
             "NAXIS1": npix_x,
-            "CTYPE2": f"{ctype2}{self.projection}",
+            "CTYPE2": f"{ctype2}{proj}",
             "CUNIT2": "deg",
             "CDELT2": pixel_size_deg,
             "CRPIX2": (npix_y + 1) / 2,
@@ -283,6 +293,8 @@ if __name__ == "__main__":
         raise ValueError(f"Config file `{config_path}` does not exist or is not a YAML file")
 
     config = load_config(config_path)
+    print('Loaded configuration file: ', config_path)
+
     for scan_path in ["scan_x_dir", "scan_y_dir"]:
 
         path = getattr(config.paths, scan_path)
@@ -297,15 +309,21 @@ if __name__ == "__main__":
         scan = Scan.from_dir(path, config.scan)
         cal_path = next(config.paths.calibration_dir.iterdir(), None) if config.paths.calibration_dir is not None else None
         config.calibration.path = cal_path
+        print('Processing TODs.')
+        if config.calibration.type == CalibrationType.SKYDIP:
+            print('   Calibrating the TODs with skydip.')
+        print('   Filtering the TODs.')
         scan.process(config.calibration, config.filtering)
-
+        
+        print('Making map.')
         binner_mm = BinnerMapMaker(scans=[scan], pixel_size=config.map_making.pixel_size, npix=config.map_making.npix)
         product = binner_mm.make_map()
 
         prefix = config_path.stem + " " + scan_path.split('_')[1]
         to_fits(config.paths.output / (prefix + "_map.fits"), product)
 
-        fig, axes = plot_map(
+        '''
+        fig, axes = plot_tris_maps(
             product.data_map,
             product.count_map,
             product.wcs,
@@ -314,5 +332,12 @@ if __name__ == "__main__":
             colorbar_label="Phases [rad]",
             savepath=config.paths.output / (prefix + "_map.png"),
             dpi=600)
-
+        '''
+        
+        fig, ax = plot_map(product.data_map, 
+                           config, 
+                           save_map=False, 
+                           wcs=product.wcs
+                           )
+        
         plt.show()

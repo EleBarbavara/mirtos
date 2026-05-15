@@ -1,5 +1,5 @@
 # === Font e testo ===
-text.usetex: True
+text.usetex: False
 font.family: serif
 font.size: 10
 
