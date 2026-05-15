@@ -1,11 +1,17 @@
 from typing import Any, Callable, Optional
 
 import numpy as np
+import pandas as pd
+import statsmodels.api as sm
 from astropy.stats import sigma_clip
 from scipy.optimize import curve_fit
 from scipy.signal import butter, sosfiltfilt
+import sys
+from pathlib import Path
+from matplotlib import pyplot as plt
 
 from mirtos.core.type_defs.filters import Step, MaskWithoutRadius, MaskWithoutRadiusMode
+from mirtos.core.type_defs.config import load_config
 
 # callable indica che filter_fn e' di tipo funzione
 # np.ndarray: tod da filtrare
@@ -167,73 +173,135 @@ def remove_baseline(time_: Optional[np.ndarray], tods: np.ndarray, filter_params
         return tods - polynomial_trend(time_, tods, deg)
     return tods - polynomial_trend_masked(time_, tods, masks2d, deg)
 
+def corr_matrix(ts, pixel_mask):
+    masks = np.copy(np.array(np.array(pixel_mask)))
+    ts_masked = np.copy(np.array(np.array(ts)))
+    for tod, mask in zip(ts_masked, masks):
+        tod[np.logical_not(mask)]=np.nan
+    
+    ts_masked = pd.DataFrame(ts_masked).T
+
+    corr_matrix = ts_masked.corr()
+
+    plot=False
+    if plot == True :
+        fig, ax = plt.subplots()
+        im = ax.imshow(corr_matrix, cmap='coolwarm')
+        im.set_clim(-1, 1)
+        cbar = ax.figure.colorbar(im, ax=ax)#, format='% .2f' #quando c'è coeff di corr sull'immagine
+        plt.title('Channels correlation matrix (only detrended)')
+        plt.xlabel('Channel')
+        plt.ylabel('Channel')
+        plt.show()
+    
+    return np.matrix(corr_matrix)
 
 @register('remove_common_mode')
 def remove_common_mode(time_: np.ndarray, tods: np.ndarray, filter_params: dict[str, Any]):
     """
     """
-
     masks2d: np.ndarray = filter_params.get("masks2d", None)
+    
+    if not filter_params["use_correlation_matrix"]:
+        if masks2d is not None:
+            tods_cm = tods.copy()
+            tods_cm[~masks2d] = np.nan
+            common_mode = np.nanmean(tods_cm, axis=0, keepdims=True)
+            #for i in range(len(tods_cm)):
+            filtered_tods = tods - common_mode
+            return (filtered_tods, common_mode) if filter_params["return_common_mode"] else filtered_tods
+        
+        common_mode = tods.mean(axis=0, keepdims=True)
+        filtered_tods = tods - common_mode
+        return (filtered_tods, common_mode) if filter_params["return_common_mode"] else filtered_tods
 
-    if masks2d is not None:
-        tods_cm = tods.copy()
-        tods_cm[~masks2d] = np.nan
-        common_mode = np.nanmean(tods_cm, axis=0, keepdims=True)
-        filtered_tods = tods_cm - common_mode
+
+    # FIX: va implementata tenendo conto di eventuali nan quando mask2d viene passata
+    elif filter_params["use_correlation_matrix"]:
+        if masks2d is None:
+            # gli passo una matrice di TODS (num_feed x N)
+            # ottengo la matrice num_feed x num_feed
+            # di base, np.corrcoef ha rowvar = True, quindi considera
+            # come variabili le righe e non le colonne.
+            # Vogliamo cercare le correalazioni tra le TOD, quindi dobbiamo
+            # passare la matrice `tods` (N_feed x N) e non la matrice `tods.T` (N x N_feed
+            corr = np.corrcoef(tods)
+            # azzero diagonale di corr, cioe' l'auto-correlazione tra KIDs
+            np.fill_diagonal(corr, 0)
+
+            # num_feed x N
+            num = corr @ tods
+            # num_feed -> num_feed x 1 per rendere la divisione consistente per la tassonomia numpy
+            denom = corr.sum(axis=1)[:, np.newaxis]
+
+            # num_feed x N
+            common_mode_ch = num / denom
+
+            # coeff from linear regression: b = y * x / sum(x**2) con x = common_mode
+            # e y = tods
+
+            x = common_mode_ch
+            y = tods
+            # voglio num_feed fattori di scala
+            b = (x * y).sum(axis=1) / (x ** 2).sum(axis=1)
+            common_mode = b[:, np.newaxis] * common_mode_ch
+
+            filtered_tods = tods - common_mode
+        
+
+        elif masks2d is not None:
+            corr = corr_matrix(tods, masks2d)
+            common_mode_ch = []
+            weight = np.copy(corr)
+            
+            masked_ts = np.ma.array(tods, mask=np.invert(masks2d))
+            source_masked = np.ma.MaskedArray(masked_ts, mask=np.isnan(masked_ts))
+            #print('DIMENSIONE CORR MATRIX: ', np.shape(weight))
+            for i in range(0, len(tods)):
+                weight[i][i] = 0
+                common_mode_ch.append(np.average(source_masked, weights=weight[i], axis=0))
+            
+            model = []
+            b1 = []
+            #b0 = []
+            masked_cm_ch = np.ma.array(common_mode_ch, mask=np.invert(masks2d))
+            for i in range(0, len(tods)):
+                model = sm.OLS(masked_ts[i], masked_cm_ch[i]).fit()
+                #print(model.summary())
+                b1.append(model.params[0]) #slope of linear regression -> costante moltiplicativa da mettere davanti al common mode
+                #b0 = model.params[1] #intercept of linear regression
+            common_mode_ch = np.array(np.array(common_mode_ch))
+            b1 = np.array(np.array(b1))
+            filtered_tods = []
+            common_mode = []
+            for i in range(len(tods)):
+                filtered_tods.append(tods[i] - b1[i]*common_mode_ch[i])
+                common_mode.append(b1[i]*common_mode_ch[i]) 
+            
+        # plt.plot(tods[0])
+        # plt.plot(filtered_tods[0])
+        # plt.plot(common_mode[0])
+        # plt.show
 
         return (filtered_tods, common_mode) if filter_params["return_common_mode"] else filtered_tods
 
-    common_mode = tods.mean(axis=0, keepdims=True)
-    filtered_tods = tods - common_mode
-
-    # FIXME: va implementata tenendo conto di eventuali nan quando mask2d viene passata
-    if filter_params["use_correlation_matrix"]:
-        # gli passo una matrice di TODS (num_feed x N)
-        # ottengo la matrice num_feed x num_feed
-        # di base, np.corrcoef ha rowvar = True, quindi considera
-        # come variabili le righe e non le colonne.
-        # Vogliamo cercare le correalazioni tra le TOD, quindi dobbiamo
-        # passare la matrice `tods` (N_feed x N) e non la matrice `tods.T` (N x N_feed
-        corr = np.corrcoef(tods)
-        # azzero diagonale di corr, cioe' l'auto-correlazione tra KIDs
-        np.fill_diagonal(corr, 0)
-
-        # num_feed x N
-        num = corr @ tods
-        # num_feed -> num_feed x 1 per rendere la divisione consistente per la tassonomia numpy
-        denom = corr.sum(axis=1)[:, np.newaxis]
-
-        # num_feed x N
-        common_mode = num / denom
-
-        # coeff from linear regression: b = y * x / sum(x**2) con x = common_mode
-        # e y = tods
-        x = common_mode
-        y = tods
-        # voglio num_feed fattori di scala
-        b = (x * y).sum(axis=1) / (x ** 2).sum(axis=1)
-
-        filtered_tods = tods - b[:, np.newaxis] * common_mode
-
-    return (filtered_tods, common_mode) if filter_params["return_common_mode"] else filtered_tods
-
 
 def apply_butterworth(time_: np.ndarray, filter_params: dict[str, Any]):
-    sampling_frequency = 1 / (time_[1] - time_[0])
+    sampling_frequency = 244.140625
     nyquist_frequency = 0.5 * sampling_frequency
     norm_cutoff_freq = filter_params["cutoff_freq"] / nyquist_frequency
 
-    wn = [norm_cutoff_freq]
+    wn = np.copy(norm_cutoff_freq)
 
     if filter_params["btype"] == 'bandpass':
         norm_cuton_freq = filter_params["cuton_freq"] / nyquist_frequency
         # inseriramo nella posizione 0
-        wn.insert(0, norm_cuton_freq)
+        wn= [norm_cuton_freq, norm_cutoff_freq]
 
     return butter(filter_params["butter_order"],
                   wn,
                   btype=filter_params["btype"],
-                  fs=sampling_frequency,
+                  #fs=sampling_frequency,
                   output='sos')  # second-order sections
 
 
@@ -244,16 +312,26 @@ def band_pass_filter(time_: np.ndarray, tods: np.ndarray, filter_params: dict[st
     """
 
     sos = apply_butterworth(time_, filter_params)
-
     # sosfiltfilt e' un filtro piu' stabile di filtfilt: tagli sulle frequenze fatti meglio, genera meno artifici
-    return sosfiltfilt(sos, tods, axis=1)
+    filt_tods = []
+    for i in range(len(tods)):
+        filt_tods.append(sosfiltfilt(sos, tods[i])) #axis=1
+
+    # plt.plot(tods[0])
+    # plt.plot(filt_tods[0])
+    # plt.show()
+    return filt_tods
 
 
 @register('low_pass_filter')
 def low_pass_filter(time_: np.ndarray, tods: np.ndarray, filter_params: dict[str, Any]):
     sos = apply_butterworth(time_, filter_params)
+    
+    filt_tods = []
+    for i in range(len(tods)):
+        filt_tods.append(sosfiltfilt(sos, tods[i])) #axis=1
 
-    return sosfiltfilt(sos, tods, axis=1)
+    return filt_tods
 
 
 def run_filter_steps(time_: np.ndarray,
@@ -308,4 +386,42 @@ def clean_noise(time_, tods_: np.ndarray, masks2d: np.ndarray, n_modes: int = 1)
 
 
 if __name__ == "__main__":
-    ...
+    from mirtos.core.type_defs.scan import Scan
+    base_path = Path(__file__).parents[3]
+    config_path = base_path / "configs" / sys.argv[1]
+
+    if not config_path.exists() or config_path.suffix != ".yaml":
+        raise ValueError(f"Config file `{config_path}` does not exist or is not a YAML file")
+
+    config = load_config(config_path)
+    print('Loaded configuration file: ', config_path)
+
+    for scan_path in ["scan_x_dir", "scan_y_dir"]:
+
+        path = getattr(config.paths, scan_path)
+
+        if path is None or not path.exists():
+            continue
+
+        fits_files = list(path.rglob("*.fits"))
+        if not fits_files:
+            continue
+
+        scan = Scan.from_dir(path, config.scan)
+        cal_path = next(config.paths.calibration_dir.iterdir(), None) if config.paths.calibration_dir is not None else None
+        config.calibration.path = cal_path
+        
+        #scan.process(config.calibration, config.filtering)
+
+        sub = scan.subscans[30]
+        print(sub.kids[0].tod)
+
+        nyquist_frequency = 0.5 * 244.140625
+        norm_cutoff_freq = 60 / nyquist_frequency
+
+        sos = butter(4, norm_cutoff_freq, 'lowpass', output='sos')
+        y = sosfiltfilt(sos, sub.kids[0].tod)
+        plt.plot(sub.kids[0].tod)
+        plt.plot(y)
+        plt.show()
+        
