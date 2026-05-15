@@ -9,7 +9,7 @@ from typing import Optional, Union
 
 from mirtos.core.type_defs.beam_map import BeamMap
 from mirtos.core.type_defs.calibration import CalibrationConfig
-from mirtos.core.type_defs.filters import FilteringConfig, MaskWithoutRadiusMode
+from mirtos.core.type_defs.filters_defs import FilteringConfig, MaskWithoutRadiusMode
 from mirtos.core.type_defs.mapmaking import MapMakingProjection, MapMakingFrame, MapMakingConfig
 
 

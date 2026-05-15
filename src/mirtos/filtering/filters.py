@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 from matplotlib import pyplot as plt
 
-from mirtos.core.type_defs.filters import Step, MaskWithoutRadius, MaskWithoutRadiusMode
+from mirtos.core.type_defs.filters_defs import Step, MaskWithoutRadius, MaskWithoutRadiusMode
 from mirtos.core.type_defs.config import load_config
 
 # callable indica che filter_fn e' di tipo funzione

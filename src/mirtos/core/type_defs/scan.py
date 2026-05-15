@@ -21,7 +21,7 @@ from mirtos.core.type_defs.config import (load_config,
                                           CalibrationConfig,
                                           ScanContext)
 
-from mirtos.core.type_defs.filters import FilteringConfig
+from mirtos.core.type_defs.filters_defs import FilteringConfig
 from mirtos.core.type_defs.focal_plane import KID, Position
 from mirtos.core.multipreprocess import process_all, Job, outputs_valid
 from mirtos.filtering.filters import run_filter_steps, get_without_radius_mask, clean_noise
