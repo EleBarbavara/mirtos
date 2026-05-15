@@ -8,7 +8,7 @@ paths:
   instrumentation: 'configs/instrument/telescope/SRT.yaml'
   # Location of files (ra, dec, cal) .fits
   # datadir: "data/input/base_test"
-  datadir: "/Users/eleonora/Desktop/mistral/OBS/SRT-dicembre/20241214-211411-MISTRAL-JUPITER_TY-2.5_TZ-7"
+  datadir: "data/input/20241214-204624"
   output: "data/output"
   #File of the channels' responsivity
   resp:  #'/home/eleobar/MISTRAL_gen+map-maker/optical_responsivity_new_lowSNR_200mK.pkl'
@@ -31,7 +31,7 @@ map_making:
 calibration:
   tau: 0.2
   T_atm: 260
-  caldir: "/Users/eleonora/Desktop/mistral/OBS/SRT-dicembre/20241214-170426-MISTRAL-GAIN_CAL/20241214-170426-MISTRAL-GAIN_CAL_002_001.fits"
+  caldir: "data/input/20241214-204624/gain-cal"
 
   method:
     kind: SKYDIP # SKYDIP # or hf or None
@@ -39,10 +39,13 @@ calibration:
    # per hf passo min_freq
 
 filtering:
-  #info of box around source to mask during baseline removal and filtering
+  # Primary mask choice:
+  # - radius > 0 arcsec: build a source-radius mask
+  # - radius == 0 arcsec: build a mask using without_radius
   radius: 1 arcmin
-  mask_without_radius:
-    mode: cutted
+
+  without_radius:
+    mode: cut
     offset: 0.1
     sigma: 6
     maxiters: 10
@@ -53,8 +56,8 @@ filtering:
 
   steps:
     - op: remove_baseline
-      #   params:
-      #     deg: 4
+      params:
+        deg: 4
 
     - op: remove_common_mode
       params:
