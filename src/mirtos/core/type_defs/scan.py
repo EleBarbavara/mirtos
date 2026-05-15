@@ -202,7 +202,6 @@ class Subscan:
 
         _, cal_tods = calibration.calibrate(self.kids, self.el)
 
-        mask_type = "mask_without_radius"
 
         if filter_conf.radius.value:
             lon, lat = conv_radec_to_latlon(
@@ -213,7 +212,6 @@ class Subscan:
                 yOffset=self.beammap.beam_map['lat_offset'],
                 projection=projection, frame=frame)
 
-            mask_type = "mask_with_radius"
             # da arcsec a rad
             radius = filter_conf.radius.to(u.rad).value
             dist_from_center = np.sqrt(lon ** 2 + lat ** 2)
@@ -222,17 +220,11 @@ class Subscan:
         else:
             # ogni KID ha la sua maschera (mask2D) ma, per quanto riguarda i filtri in frequenza (lowpass, bandpass),
             # non possiamo passare delle tod frammentate, quindi usiamo la maschera del subscan (mask)
-            masks2d = get_without_radius_mask(cal_tods, filter_conf.mask_without_radius)
+            masks2d = get_without_radius_mask(cal_tods, filter_conf.without_radius)
 
-        # definisco la lista dei filtri specifici e di quelli common
-        # il cui ordine di esecuzione e' quello dello yaml.
-        # se mask_type = mask_without_radius, come primo step di filtraggio faccio il linear_detrend
-        # se mask_type = mask_with_radius, come primo step di filtraggio faccio il remove_baseline
-        filters = getattr(filter_conf.steps, mask_type) + filter_conf.steps.common
-        # # filtro le tod mascherate, a prescindere che siano mascherate
-        # # con o senza raggio
-
-        filtered_tods = run_filter_steps(self.time, cal_tods, filters, masks2d=masks2d)
+        # The primary mask is selected above from radius/without_radius.
+        # Filtering steps are now a flat user-defined list from the YAML config.
+        filtered_tods = run_filter_steps(self.time, cal_tods, filter_conf.steps, masks2d=masks2d)
 
         # filtered_tods = clean_noise(self.time, cal_tods, masks2d=masks2d, n_modes=0)
 
