@@ -144,7 +144,7 @@ class Subscan:
             else:
                 beammap = BeamMap.from_dat(ctx.beammap_filename,
                                            frame=ctx.frame,
-                                           par_angle=par_angle[mask] if ctx.frame == MapMakingFrame.RADEC else None,
+                                           par_angle=par_angle[mask],  # if ctx.frame == MapMakingFrame.RADEC else None,
                                            valid_kids=True)
 
             kids = []

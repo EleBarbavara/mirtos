@@ -3,7 +3,6 @@ import pandas as pd
 from pathlib import Path
 from dataclasses import dataclass
 
-from mirtos.core.projections import rot
 from mirtos.io.dat import read_dat
 from mirtos.core.type_defs.mapmaking import MapMakingFrame
 
@@ -43,8 +42,8 @@ class BeamMap:
         df['lon_offset'] = np.deg2rad(df['lon_offset'])
         df['lat_offset'] = np.deg2rad(df['lat_offset'])
 
-        if frame == MapMakingFrame.RADEC:
-            df['lon_offset'], df['lat_offset'] = rot(df['lon_offset'], df['lat_offset'], par_angle)
+        # if frame == MapMakingFrame.RADEC:
+        #     df['lon_offset'], df['lat_offset'] = rot(df['lon_offset'], df['lat_offset'], par_angle)
 
         # se valid_kids e' True ritorno il dataframe con i kid funzionanti (tolgo le righe dei kid non funzionanti,
         # ma l'id e' immutabile)

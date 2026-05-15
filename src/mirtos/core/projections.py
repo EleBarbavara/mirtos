@@ -21,8 +21,10 @@ def rot(x, y, theta):
 
 def proj_radec_to_xy(ra, dec, ra0, dec0, projection: MapMakingProjection):
     if projection == MapMakingProjection.SIN:
-        x = (ra - ra0) * np.cos(dec) + ra0
-        y = dec
+        # Return tangent-plane offsets around the map center, not absolute RA/DEC.
+        # The binner expects coordinates close to zero in radians.
+        x = (ra - ra0) * np.cos(dec)
+        y = dec - dec0
         return x, y
 
     if projection == MapMakingProjection.GNOM:

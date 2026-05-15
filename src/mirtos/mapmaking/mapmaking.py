@@ -9,7 +9,7 @@ from matplotlib import pyplot as plt
 from scipy.stats import binned_statistic_2d
 
 from mirtos.core.type_defs.scan import Scan
-from mirtos.core.projections import conv_radec_to_latlon
+from mirtos.core.projections import conv_radec_to_latlon, conv_xy_to_latlon
 from mirtos.core.type_defs.calibration import CalibrationType
 from mirtos.core.type_defs.config import MapMakingFrame, load_config
 from mirtos.core.type_defs.mapmaking import MapMakingProjection
@@ -17,8 +17,11 @@ from mirtos.plotting.map import plot_map, plot_tris_maps
 from mirtos.io.fits import to_fits
 
 
-def _make_bins(npix_x: int, npix_y: int, pixel_size_deg: float,
-               center_ra_deg: float, center_dec_deg: float):
+def _make_bins(npix_x: int,
+               npix_y: int,
+               pixel_size_deg: float,
+               center_ra_deg: float,
+               center_dec_deg: float):
 
     x_min = center_ra_deg - (npix_x // 2) * pixel_size_deg
     x_max = center_ra_deg + (npix_x // 2) * pixel_size_deg
@@ -233,55 +236,106 @@ class BinnerMapMaker(MapMaker):
         )
 
     def make_map(self):
+
         npix_x, npix_y = self.npix
         pixel_size_deg = self.pixel_size.to_value('deg')
         center_ra_deg = np.rad2deg(self.ra_center)
         center_dec_deg = np.rad2deg(self.dec_center)
 
         scan_ = self.scans[0]
-        values = scan_.tods.ravel()
+        beammap = scan_.ctx.beammap.beam_map
+        kid0 = beammap.iloc[0]
+        lon_offset0 = kid0["lon_offset"]
+        lat_offset0 = kid0["lat_offset"]
 
-        lon, lat = conv_radec_to_latlon(
-            scan_.ra,
-            scan_.dec,
-            self.ra_center,
-            self.dec_center,
-            self.projection,
-            scan_.par_angle,
-            scan_.ctx.beammap.beam_map['lon_offset'].to_numpy(),
-            scan_.ctx.beammap.beam_map['lat_offset'].to_numpy(),
-            self.frame)
+        # For AZEL maps, center the WCS on the mean trajectory of a fixed detector.
+        # We use KID 0 and all az/el samples from all subscans in this scan.
+        # az_kid0 = scan_.az - lon_offset0 / np.cos(scan_.el)
+        # el_kid0 = scan_.el + lat_offset0
+        center_az_deg = np.rad2deg(np.nanmean(scan_.az))
+        center_el_deg = np.rad2deg(np.nanmean(scan_.az))
+
+        values = scan_.tods.ravel()
+        x_offsets = scan_.ctx.beammap.beam_map['lon_offset'].to_numpy()
+        y_offsets = scan_.ctx.beammap.beam_map['lat_offset'].to_numpy()
 
         if self.frame == MapMakingFrame.RADEC:
+            lat, lon = conv_radec_to_latlon(
+                scan_.ra,
+                scan_.dec,
+                self.ra_center,
+                self.dec_center,
+                self.projection,
+                scan_.par_angle,
+                x_offsets,
+                y_offsets,
+                self.frame)
+
             x_bins, y_bins = _make_bins(npix_x, npix_y, pixel_size_deg, center_ra_deg, center_dec_deg)
 
-            x = np.rad2deg(lon).ravel()
-            y = np.rad2deg(lat).ravel()
+            # lon and lat are local tangent-plane offsets in radians.
+            # Convert them back to absolute sky coordinates before binning,
+            # because the RADEC map grid is centered on the absolute source coordinates.
+            x = (center_ra_deg + np.rad2deg(lon) / np.cos(self.dec_center)).ravel()
+            y = (center_dec_deg + np.rad2deg(lat)).ravel()
 
             data_map, count_map, std_map = _do_binning(
                 x, y, values,
                 bins=[npix_x, npix_y],
                 range_=[(x_bins[0], x_bins[-1]), (y_bins[0], y_bins[-1])])
 
-            wcs = self._make_wcs("RA--", "DEC-", center_ra_deg, center_dec_deg, npix_x, npix_y, pixel_size_deg)
+            wcs = self._make_wcs(
+                "RA--",
+                "DEC-",
+                center_ra_deg,
+                center_dec_deg,
+                npix_x,
+                npix_y,
+                pixel_size_deg)
+
             return self._make_result(data_map, count_map, std_map, wcs)
 
-        x = np.rad2deg(lon).ravel()
-        y = -np.rad2deg(lat).ravel()
+        elif self.frame == MapMakingFrame.AZEL:
+            center_az_rad = np.deg2rad(center_az_deg)
+            center_el_rad = np.deg2rad(center_el_deg)
 
-        x_min = -(npix_x // 2) * pixel_size_deg
-        x_max = +(npix_x // 2) * pixel_size_deg
-        y_min = -(npix_y // 2) * pixel_size_deg
-        y_max = +(npix_y // 2) * pixel_size_deg
+            lat, lon = conv_xy_to_latlon(
+                scan_.az,
+                scan_.el,
+                scan_.par_angle,
+                x_offsets,
+                y_offsets,
+                center_az_rad,
+                center_el_rad,
+                self.frame)
 
-        data_map, count_map, std_map = _do_binning(
-            x, y, values,
-            bins=[npix_x, npix_y],
-            range_=[(x_min, x_max), (y_min, y_max)])
+            x = -np.rad2deg(lon).ravel()
+            y = np.rad2deg(lat).ravel()
 
-        wcs = self._make_wcs("AZ--", "EL--", 0, 0, npix_x, npix_y, pixel_size_deg)
+            x_min = -(npix_x // 2) * pixel_size_deg
+            x_max = +(npix_x // 2) * pixel_size_deg
+            y_min = -(npix_y // 2) * pixel_size_deg
+            y_max = +(npix_y // 2) * pixel_size_deg
 
-        return self._make_result(data_map, count_map, std_map, wcs)
+            data_map, count_map, std_map = _do_binning(
+                y,
+                x,
+                values,
+                bins=[npix_x, npix_y],
+                range_=[(x_min, x_max), (y_min, y_max)])
+
+            wcs = self._make_wcs(
+                "AZ--",
+                "EL--",
+                center_az_deg,
+                center_el_deg,
+                npix_x,
+                npix_y,
+                pixel_size_deg)
+
+            return self._make_result(data_map, count_map, std_map, wcs)
+
+        raise NotImplementedError(f"Frame `{self.frame}` not available for map making.")
 
 
 if __name__ == "__main__":
