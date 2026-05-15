@@ -4,7 +4,7 @@ import numpy as np
 from astropy.stats import sigma_clip
 from scipy.signal import butter, sosfiltfilt
 
-from mirtos.core.type_defs.filters_defs import Step, MaskWithoutRadius, MaskWithoutRadiusMode
+from mirtos.core.type_defs.filters import Step, MaskWithoutRadius, MaskWithoutRadiusMode
 
 # callable indica che filter_fn e' di tipo funzione
 # np.ndarray: tod da filtrare
