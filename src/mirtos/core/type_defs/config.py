@@ -9,7 +9,7 @@ from typing import Optional, Union
 
 from mirtos.core.type_defs.beam_map import BeamMap
 from mirtos.core.type_defs.calibration import CalibrationConfig
-from mirtos.core.type_defs.filters import FilteringConfig, MaskWithoutRadiusMode
+from mirtos.core.type_defs.filters_defs import FilteringConfig, MaskWithoutRadiusMode
 from mirtos.core.type_defs.mapmaking import MapMakingProjection, MapMakingFrame, MapMakingConfig
 
 
@@ -136,7 +136,7 @@ def load_config(path: Path) -> Config:
         MapMakingFrame: MapMakingFrame,
         u.Quantity: u.Quantity,
         datetime: lambda s: datetime.strptime(s, "%Y%m%d"),
-        MaskWithoutRadiusMode: lambda s: MaskWithoutRadiusMode[s.upper()],
+        MaskWithoutRadiusMode: lambda s: MaskWithoutRadiusMode(str(s).lower()),
         # se non passo nulla a path nel file config, gli viene assegnato None.
         # None deve essere prima convertito in stringa (str(None)) e poi messo in upper case
         # cosi da essere riconosciuto nella classe enum CalibrationType

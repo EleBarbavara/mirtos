@@ -2,10 +2,9 @@ from typing import Any, Callable, Optional
 
 import numpy as np
 from astropy.stats import sigma_clip
-from scipy.optimize import curve_fit
 from scipy.signal import butter, sosfiltfilt
 
-from mirtos.core.type_defs.filters import Step, MaskWithoutRadius, MaskWithoutRadiusMode
+from mirtos.core.type_defs.filters_defs import Step, MaskWithoutRadius, MaskWithoutRadiusMode
 
 # callable indica che filter_fn e' di tipo funzione
 # np.ndarray: tod da filtrare
@@ -36,14 +35,14 @@ def get_without_radius_mask(tods: np.ndarray,
     tod_len = tods.shape[1]
     masks2d = np.zeros_like(tods, dtype=bool)
 
-    if params.mode == MaskWithoutRadiusMode.CUTTED:
+    if params.mode == MaskWithoutRadiusMode.CUT:
 
         offset = int(tod_len * params.offset)
         off = min(offset, tod_len)
 
         if off > 0:
             idx = np.arange(tod_len)
-            # broadcast automatico su tutte le righe
+            # Same edge mask broadcast to all detectors.
             masks2d[:] = (idx < off) | (idx >= tod_len - off)
 
     elif params.mode == MaskWithoutRadiusMode.SIGMA:
@@ -161,8 +160,8 @@ def remove_baseline(time_: Optional[np.ndarray], tods: np.ndarray, filter_params
 
     deg = filter_params["deg"]
     masks2d = filter_params.get("masks2d")
-    # TODO: gestire il caso in cui la maschera e' cutted, ossia ha tutte le righe uguali.
-    #  In particolare, possiamo utilizzare polynomial_trend e non la versione masked
+    # TODO: for a pure edge-cut mask, all detectors share the same valid samples.
+    #  In that case, polynomial_trend could be used instead of the masked version.
     if masks2d is None:
         return tods - polynomial_trend(time_, tods, deg)
     return tods - polynomial_trend_masked(time_, tods, masks2d, deg)
@@ -261,15 +260,18 @@ def run_filter_steps(time_: np.ndarray,
                      steps: list[Step],
                      masks2d: np.ndarray | None = None):
     for step in steps:
-        # funzione filtro
+        if step.op not in FILTERS:
+            available = ", ".join(sorted(FILTERS))
+            raise ValueError(
+                f"Unknown filtering step `{step.op}`. Available steps are: {available}"
+            )
+
         fn = FILTERS[step.op]
         params = dict(step.params)
-        if masks2d is not None and "filter" not in step.op.lower():
-            # eseguo una copia di steps.params e inserisco masks2d
-            # Se la inserissi direttamente in step.params, poi rimarrebbe li fino a fine esecuzione
-            params['masks2d'] = masks2d
 
-        # filtro la tod
+        if masks2d is not None and "filter" not in step.op.lower():
+            params["masks2d"] = masks2d
+
         tods = fn(time_, tods, params)
 
     return tods
@@ -285,7 +287,7 @@ def clean_noise(time_, tods_: np.ndarray, masks2d: np.ndarray, n_modes: int = 1)
     #     xdata = tm_[masks2d[t]]
     #     ydata = tod[masks2d[t]]
     #
-    #     popt, pcov = curve_fit(f=lin_func, xdata=xdata, ydata=ydata)
+    #     popt, pcov = scipy.optimize.curve_fit(f=lin_func, xdata=xdata, ydata=ydata)
     #     X[t] -= lin_func(tm_, *popt)
     #
     # return X
