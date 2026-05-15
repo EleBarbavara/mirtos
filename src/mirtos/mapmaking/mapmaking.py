@@ -314,7 +314,6 @@ if __name__ == "__main__":
             print('   Calibrating the TODs with skydip.')
         print('   Filtering the TODs.')
         scan.process(config.calibration, config.filtering)
-
         
         print('Making map.')
         binner_mm = BinnerMapMaker(scans=[scan], pixel_size=config.map_making.pixel_size, npix=config.map_making.npix)
