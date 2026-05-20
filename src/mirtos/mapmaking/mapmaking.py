@@ -236,30 +236,18 @@ class BinnerMapMaker(MapMaker):
         )
 
     def make_map(self):
-
         npix_x, npix_y = self.npix
         pixel_size_deg = self.pixel_size.to_value('deg')
-        center_ra_deg = np.rad2deg(self.ra_center)
-        center_dec_deg = np.rad2deg(self.dec_center)
 
         scan_ = self.scans[0]
-        beammap = scan_.ctx.beammap.beam_map
-        kid0 = beammap.iloc[0]
-        lon_offset0 = kid0["lon_offset"]
-        lat_offset0 = kid0["lat_offset"]
-
-        # For AZEL maps, center the WCS on the mean trajectory of a fixed detector.
-        # We use KID 0 and all az/el samples from all subscans in this scan.
-        # az_kid0 = scan_.az - lon_offset0 / np.cos(scan_.el)
-        # el_kid0 = scan_.el + lat_offset0
-        center_az_deg = np.rad2deg(np.nanmean(scan_.az))
-        center_el_deg = np.rad2deg(np.nanmean(scan_.az))
-
         values = scan_.tods.ravel()
         x_offsets = scan_.ctx.beammap.beam_map['lon_offset'].to_numpy()
         y_offsets = scan_.ctx.beammap.beam_map['lat_offset'].to_numpy()
 
         if self.frame == MapMakingFrame.RADEC:
+            center_ra_deg = np.rad2deg(self.ra_center)
+            center_dec_deg = np.rad2deg(self.dec_center)
+
             lat, lon = conv_radec_to_latlon(
                 scan_.ra,
                 scan_.dec,
@@ -272,12 +260,9 @@ class BinnerMapMaker(MapMaker):
                 self.frame)
 
             x_bins, y_bins = _make_bins(npix_x, npix_y, pixel_size_deg, center_ra_deg, center_dec_deg)
-
-            # lon and lat are local tangent-plane offsets in radians.
-            # Convert them back to absolute sky coordinates before binning,
-            # because the RADEC map grid is centered on the absolute source coordinates.
-            x = (center_ra_deg + np.rad2deg(lon) / np.cos(self.dec_center)).ravel()
-            y = (center_dec_deg + np.rad2deg(lat)).ravel()
+            
+            x = np.rad2deg(lon).ravel()
+            y = np.rad2deg(lat).ravel()
 
             data_map, count_map, std_map = _do_binning(
                 x, y, values,
@@ -296,39 +281,38 @@ class BinnerMapMaker(MapMaker):
             return self._make_result(data_map, count_map, std_map, wcs)
 
         elif self.frame == MapMakingFrame.AZEL:
-            center_az_rad = np.deg2rad(center_az_deg)
-            center_el_rad = np.deg2rad(center_el_deg)
+            center_az_deg = np.rad2deg(np.nanmean(scan_.az))
+            center_el_deg = np.rad2deg(np.nanmean(scan_.el))
 
-            lat, lon = conv_xy_to_latlon(
-                scan_.az,
-                scan_.el,
+            lat, lon = conv_radec_to_latlon(
+                scan_.ra,
+                scan_.dec,
+                self.ra_center,
+                self.dec_center,
+                self.projection,
                 scan_.par_angle,
                 x_offsets,
                 y_offsets,
-                center_az_rad,
-                center_el_rad,
                 self.frame)
+            
+            x_bins, y_bins = _make_bins(npix_x, npix_y, pixel_size_deg, center_az_deg, center_el_deg)
 
-            x = -np.rad2deg(lon).ravel()
-            y = np.rad2deg(lat).ravel()
-
-            x_min = -(npix_x // 2) * pixel_size_deg
-            x_max = +(npix_x // 2) * pixel_size_deg
-            y_min = -(npix_y // 2) * pixel_size_deg
-            y_max = +(npix_y // 2) * pixel_size_deg
-
+            x = center_az_deg + np.rad2deg(lon).ravel()
+            y = center_el_deg + np.rad2deg(lat).ravel()
+            
             data_map, count_map, std_map = _do_binning(
-                y,
                 x,
+                y,
                 values,
                 bins=[npix_x, npix_y],
-                range_=[(x_min, x_max), (y_min, y_max)])
+                range_=[(x_bins[0], x_bins[-1]), (y_bins[0], y_bins[-1])])
+                #range_=[(x_min, x_max), (y_min, y_max)])
 
             wcs = self._make_wcs(
                 "AZ--",
                 "EL--",
-                center_az_deg,
-                center_el_deg,
+                center_az_deg, 
+                center_el_deg, 
                 npix_x,
                 npix_y,
                 pixel_size_deg)
