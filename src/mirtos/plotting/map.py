@@ -12,7 +12,7 @@ MarkerWorld = tuple[float, float, str]
 MarkerPixel = tuple[float, float, str]
 
 
-def plot_map(mapp, cfg, namefile='', name='', save_map=False, wcs=None, beam=None, halo=None, vmax=None): 
+def plot_map(mapp, cfg, namefile='', name='', savepath=None, wcs=None, beam=None, halo=None, vmax=None): 
     if wcs==None:
         #image = np.ones(num_timestep)
         fig, ax = plt.subplots()
@@ -72,8 +72,9 @@ def plot_map(mapp, cfg, namefile='', name='', save_map=False, wcs=None, beam=Non
         cbar.ax.tick_params(labelsize=16)
         ax.tick_params(axis='both', labelsize=16)
         plt.show()
-        #plt.savefig(namefile)
-        #plt.close()
+        
+        if savepath is not None:
+            fig.savefig(savepath)
         return fig, ax
 
 def plot_tris_maps(
@@ -226,7 +227,6 @@ def plot_tris_maps(
 
         cbar_std = fig.colorbar(im_std, ax=ax_std, shrink=0.6, pad=0.03)
         cbar_std.set_label("STD")
-
 
     if savepath is not None:
         fig.savefig(savepath, dpi=dpi)

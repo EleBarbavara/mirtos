@@ -24,7 +24,7 @@ def proj_radec_to_xy(ra, dec, ra0, dec0, projection: MapMakingProjection):
         # Return tangent-plane offsets around the map center, not absolute RA/DEC.
         # The binner expects coordinates close to zero in radians.
         x = (ra - ra0) * np.cos(dec) +ra0
-        y = dec #- dec0
+        y = dec
         return x, y
 
     if projection == MapMakingProjection.GNOM:

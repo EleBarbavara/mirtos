@@ -325,7 +325,7 @@ def band_pass_filter(time_: np.ndarray, tods: np.ndarray, filter_params: dict[st
 @register('low_pass_filter')
 def low_pass_filter(time_: np.ndarray, tods: np.ndarray, filter_params: dict[str, Any]):
     sos = apply_butterworth(time_, filter_params)
-    
+
     filt_tods = []
     for i in range(len(tods)):
         filt_tods.append(sosfiltfilt(sos, tods[i])) #axis=1

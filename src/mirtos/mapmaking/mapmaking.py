@@ -7,6 +7,7 @@ import astropy.units as u
 from astropy.wcs import WCS
 from matplotlib import pyplot as plt
 from scipy.stats import binned_statistic_2d
+from typing import Literal, Union
 
 from mirtos.core.type_defs.scan import Scan
 from mirtos.core.projections import conv_radec_to_latlon, conv_xy_to_latlon
@@ -148,10 +149,12 @@ class MapMaker(ABC):
     def __init__(self,
                  scans: list[Scan],
                  pixel_size: u.Quantity,
-                 npix: list[int]):
+                 npix: list[int],
+                 single_pixel_map: Union[int, Literal["all"], bool]):
         self.scans = scans
         self.pixel_size = pixel_size
         self.npix = npix
+        self.single_pixel_map = single_pixel_map
 
         self.frame = scans[0].ctx.frame
         self.projection = scans[0].ctx.projection
@@ -189,7 +192,7 @@ class BinnerMapMaker(MapMaker):
         raise NotImplementedError
 
     def _make_wcs(self, ctype1: str, ctype2: str, crval1: float, crval2: float,
-                  npix_x: int, npix_y: int, pixel_size_deg: float) -> WCS:
+                  npix_x: int, npix_y: int, pixel_size_ra: float, pixel_size_deg: float) -> WCS:
         if self.projection == MapMakingProjection.SIN:
             proj = 'SIN'
         elif self.projection == MapMakingProjection.GNOM:
@@ -201,7 +204,7 @@ class BinnerMapMaker(MapMaker):
         wcs_dict = {
             "CTYPE1": f"{ctype1}{proj}",
             "CUNIT1": "deg",
-            "CDELT1": -pixel_size_deg,
+            "CDELT1": pixel_size_ra,
             "CRPIX1": (npix_x + 1) / 2,
             "CRVAL1": crval1,
             "NAXIS1": npix_x,
@@ -237,8 +240,10 @@ class BinnerMapMaker(MapMaker):
 
     def make_map(self):
         npix_x, npix_y = self.npix
+        pixel_size_ra = self.pixel_size.to_value('deg')
         pixel_size_deg = self.pixel_size.to_value('deg')
 
+        #scan_.kids[0].tod
         scan_ = self.scans[0]
         values = scan_.tods.ravel()
         x_offsets = scan_.ctx.beammap.beam_map['lon_offset'].to_numpy()
@@ -265,9 +270,16 @@ class BinnerMapMaker(MapMaker):
             y = np.rad2deg(lat).ravel()
 
             data_map, count_map, std_map = _do_binning(
-                x, y, values,
+                y, x, values,
                 bins=[npix_x, npix_y],
-                range_=[(x_bins[0], x_bins[-1]), (y_bins[0], y_bins[-1])])
+                range_=[(y_bins[0], y_bins[-1]), (x_bins[0], x_bins[-1])])
+            
+            if type(self.single_pixel_map) == int:
+                idx = self.single_pixel_map
+                print(len(scan_.kids[idx]))
+            elif self.single_pixel_map == 'all':
+                l = len(self.scans[0].kids)
+                print(l)
 
             wcs = self._make_wcs(
                 "RA--",
@@ -276,13 +288,14 @@ class BinnerMapMaker(MapMaker):
                 center_dec_deg,
                 npix_x,
                 npix_y,
+                -pixel_size_ra,
                 pixel_size_deg)
 
             return self._make_result(data_map, count_map, std_map, wcs)
 
         elif self.frame == MapMakingFrame.AZEL:
-            center_az_deg = np.rad2deg(np.nanmean(scan_.az))
-            center_el_deg = np.rad2deg(np.nanmean(scan_.el))
+            center_az_deg = 0 #np.rad2deg(np.nanmean(scan_.az))
+            center_el_deg = 0 #np.rad2deg(np.nanmean(scan_.el))
 
             lat, lon = conv_radec_to_latlon(
                 scan_.ra,
@@ -299,15 +312,24 @@ class BinnerMapMaker(MapMaker):
 
             x = center_az_deg + np.rad2deg(lon).ravel()
             y = center_el_deg + np.rad2deg(lat).ravel()
-            
+
             data_map, count_map, std_map = _do_binning(
-                x,
                 y,
+                -x,
                 values,
                 bins=[npix_x, npix_y],
                 range_=[(x_bins[0], x_bins[-1]), (y_bins[0], y_bins[-1])])
                 #range_=[(x_min, x_max), (y_min, y_max)])
 
+            if type(self.single_pixel_map) == int:
+                idx = self.single_pixel_map
+                print(len(scan_.kids[idx]))
+            elif self.single_pixel_map == 'all':
+                l = len(self.scans[0].kids)
+                print(l)
+
+            center_az_deg = np.rad2deg(np.nanmean(scan_.az))
+            center_el_deg = np.rad2deg(np.nanmean(scan_.el))
             wcs = self._make_wcs(
                 "AZ--",
                 "EL--",
@@ -315,6 +337,7 @@ class BinnerMapMaker(MapMaker):
                 center_el_deg, 
                 npix_x,
                 npix_y,
+                pixel_size_ra,
                 pixel_size_deg)
 
             return self._make_result(data_map, count_map, std_map, wcs)
@@ -354,9 +377,9 @@ if __name__ == "__main__":
         scan.process(config.calibration, config.filtering)
         
         print('Making map.')
-        binner_mm = BinnerMapMaker(scans=[scan], pixel_size=config.map_making.pixel_size, npix=config.map_making.npix)
+        binner_mm = BinnerMapMaker(scans=[scan], pixel_size=config.map_making.pixel_size, npix=config.map_making.npix, single_pixel_map=config.map_making.single_pixel_map)
         product = binner_mm.make_map()
-
+    
         prefix = config_path.stem + " " + scan_path.split('_')[1]
         to_fits(config.paths.output / (prefix + "_map.fits"), product)
 
@@ -374,8 +397,9 @@ if __name__ == "__main__":
         
         fig, ax = plot_map(product.data_map, 
                            config, 
-                           save_map=False, 
+                           savepath=config.paths.output / (prefix + "_map.png"), 
                            wcs=product.wcs
                            )
         
-        plt.show()
+        
+
