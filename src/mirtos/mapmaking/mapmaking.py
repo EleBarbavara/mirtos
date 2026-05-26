@@ -242,8 +242,7 @@ class BinnerMapMaker(MapMaker):
         npix_x, npix_y = self.npix
         pixel_size_ra = self.pixel_size.to_value('deg')
         pixel_size_deg = self.pixel_size.to_value('deg')
-
-        #scan_.kids[0].tod
+        
         scan_ = self.scans[0]
         values = scan_.tods.ravel()
         x_offsets = scan_.ctx.beammap.beam_map['lon_offset'].to_numpy()
@@ -263,7 +262,7 @@ class BinnerMapMaker(MapMaker):
                 x_offsets,
                 y_offsets,
                 self.frame)
-
+            
             x_bins, y_bins = _make_bins(npix_x, npix_y, pixel_size_deg, center_ra_deg, center_dec_deg)
             
             x = np.rad2deg(lon).ravel()
@@ -274,6 +273,7 @@ class BinnerMapMaker(MapMaker):
                 bins=[npix_x, npix_y],
                 range_=[(y_bins[0], y_bins[-1]), (x_bins[0], x_bins[-1])])
             
+            maps_single = []
             if type(self.single_pixel_map) == int:
                 idx = self.single_pixel_map
                 print(len(scan_.kids[idx]))
@@ -291,13 +291,16 @@ class BinnerMapMaker(MapMaker):
                 -pixel_size_ra,
                 pixel_size_deg)
 
-            return self._make_result(data_map, count_map, std_map, wcs)
+            #self._make_result(data_map, count_map, std_map, wcs)
+            return (self._make_result(data_map, count_map, std_map, wcs),
+                    [self._make_result(maps_single[i][0], maps_single[i][1], maps_single[i][2], wcs) for i in range(len(maps_single))])
+
 
         elif self.frame == MapMakingFrame.AZEL:
             center_az_deg = 0 #np.rad2deg(np.nanmean(scan_.az))
             center_el_deg = 0 #np.rad2deg(np.nanmean(scan_.el))
 
-            lat, lon = conv_radec_to_latlon(
+            lat, lon = conv_radec_to_latlon( # (num_feed, total_time_of_scan)
                 scan_.ra,
                 scan_.dec,
                 self.ra_center,
@@ -320,13 +323,35 @@ class BinnerMapMaker(MapMaker):
                 bins=[npix_x, npix_y],
                 range_=[(x_bins[0], x_bins[-1]), (y_bins[0], y_bins[-1])])
                 #range_=[(x_min, x_max), (y_min, y_max)])
-
+            
+            maps_single = []
             if type(self.single_pixel_map) == int:
                 idx = self.single_pixel_map
-                print(len(scan_.kids[idx]))
+                print('Making map of pixel ', idx)
+                x_single = center_az_deg + np.rad2deg(lon[idx])
+                y_single = center_el_deg + np.rad2deg(lat[idx])
+                data_map_single, count_map_single, std_map_single = _do_binning(
+                    y_single,
+                    -x_single,
+                    scan_.tods[idx],
+                    bins=[npix_x, npix_y],
+                    range_=[(x_bins[0], x_bins[-1]), (y_bins[0], y_bins[-1])])
+                maps_single.append([data_map_single, count_map_single, std_map_single])
+
             elif self.single_pixel_map == 'all':
+                print('Making single pixel maps.')
                 l = len(self.scans[0].kids)
-                print(l)
+                for i in range(l):
+                    x_single = center_az_deg + np.rad2deg(lon[i])
+                    y_single = center_el_deg + np.rad2deg(lat[i])
+                    data_map_single, count_map_single, std_map_single = _do_binning(
+                    y_single,
+                    -x_single,
+                    scan_.tods[i],
+                    bins=[npix_x, npix_y],
+                    range_=[(x_bins[0], x_bins[-1]), (y_bins[0], y_bins[-1])])
+                    #range_=[(x_min, x_max), (y_min, y_max)])
+                    maps_single.append([data_map_single, count_map_single, std_map_single])
 
             center_az_deg = np.rad2deg(np.nanmean(scan_.az))
             center_el_deg = np.rad2deg(np.nanmean(scan_.el))
@@ -340,7 +365,8 @@ class BinnerMapMaker(MapMaker):
                 pixel_size_ra,
                 pixel_size_deg)
 
-            return self._make_result(data_map, count_map, std_map, wcs)
+            return (self._make_result(data_map, count_map, std_map, wcs),
+                    [self._make_result(maps_single[i][0], maps_single[i][1], maps_single[i][2], wcs) for i in range(len(maps_single))])
 
         raise NotImplementedError(f"Frame `{self.frame}` not available for map making.")
 
@@ -379,9 +405,11 @@ if __name__ == "__main__":
         print('Making map.')
         binner_mm = BinnerMapMaker(scans=[scan], pixel_size=config.map_making.pixel_size, npix=config.map_making.npix, single_pixel_map=config.map_making.single_pixel_map)
         product = binner_mm.make_map()
+        map = product[0]
+        map_single = product[1]
     
         prefix = config_path.stem + " " + scan_path.split('_')[1]
-        to_fits(config.paths.output / (prefix + "_map.fits"), product)
+        to_fits(config.paths.output / (prefix + "_map.fits"), map)
 
         '''
         fig, axes = plot_tris_maps(
@@ -395,11 +423,21 @@ if __name__ == "__main__":
             dpi=600)
         '''
         
-        fig, ax = plot_map(product.data_map, 
+        fig, ax = plot_map(map.data_map, 
                            config, 
                            savepath=config.paths.output / (prefix + "_map.png"), 
-                           wcs=product.wcs
+                           wcs=map.wcs
                            )
+    
+        if config.map_making.single_pixel_map != False:
+            fig, ax = plot_map(map_single[0].data_map, 
+                           config, 
+                           savepath=config.paths.output / (prefix + "_map.png"), 
+                           wcs=map.wcs
+                           )
+            
+            for i in range(len(map_single)):
+                to_fits(config.paths.output / "beam" / (prefix + "_map_chp" + str(i).zfill(3) + ".fits"), map)
         
         
 
