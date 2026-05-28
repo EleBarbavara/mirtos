@@ -408,7 +408,7 @@ if __name__ == "__main__":
         map = product[0]
         map_single = product[1]
     
-        prefix = config_path.stem + " " + scan_path.split('_')[1]
+        prefix = config.name_target #config_path.stem #+ " " + scan_path.split('_')[1]
         to_fits(config.paths.output / (prefix + "_map.fits"), map)
 
         '''
@@ -432,12 +432,12 @@ if __name__ == "__main__":
         if config.map_making.single_pixel_map != False:
             fig, ax = plot_map(map_single[0].data_map, 
                            config, 
-                           savepath=config.paths.output / (prefix + "_map.png"), 
+                           savepath=config.paths.output / (prefix + "_map_chp000.png"), 
                            wcs=map.wcs
                            )
             
             for i in range(len(map_single)):
-                to_fits(config.paths.output / "beam" / (prefix + "_map_chp" + str(i).zfill(3) + ".fits"), map)
+                to_fits(config.paths.output / "beam" / (prefix + "_map_chp" + str(i).zfill(3) + ".fits"), map_single[i])
         
         
 
